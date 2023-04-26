@@ -246,7 +246,7 @@ See `plugins/gpt.{h,cc}` for an example.
 - `make` compiles all plugins into an executable.
 - `*.mk` files in the `plugins/` directory may add targets and modify variables, e.g.:
 ```
-.build/plugins/myplug.o: CXXFLAGS += $(shell pkg-config --cflags somepkg)
+%/plugins/myplug.o: CXXFLAGS += $(shell pkg-config --cflags somepkg)
 LDFLAGS += $(shell pkg-config --libs somepkg)
 ```
 
