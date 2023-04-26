@@ -1,5 +1,3 @@
-# llmq 0.1.0
-
 ```
 oooo  oooo
 `888  `888
@@ -34,7 +32,7 @@ The `llmq` executable is a terminal-friendly wrapper for conversational AIs that
 - Reads command-line arguments and/or input from stdin
 - Handles file I/O efficiently by writing deltas
 - Performs HTTPS GET or POST requests using cURL
-- Securely stores authentication in restrictive files
+- Stores credentials in restrictive files
 - Parses YAML quickly using rapidyaml
 
 llmq is built around plugins, which are designed to be easy to create.  
@@ -173,9 +171,7 @@ positional argument supported by the plugin. If ACTION is query or chat
 
 llmq is built around plugins, which are compiled into the executable.
 
-To write your own, create a `plugins/*.cc` file that includes `llmq.h` and derives `llmq::plugin`.
-
-_note: if you derive another plugin, you only need to override what you want to change._
+To register a plugin, derive `llmq::plugin` in `plugins/*.cc` an create a static/inline instance.
 
 ```cpp
 // base class for plugins. create a static instance to register it with the executable.

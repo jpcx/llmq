@@ -37,7 +37,7 @@ LDFLAGS  += $(shell pkg-config --libs libcurl)
 SOURCES = llmq.cc 3rdparty/ryml.cc $(wildcard plugins/*.cc)
 OBJECTS = $(patsubst %.cc,.build/%.o,$(SOURCES))
 
-include plugins/*.mk
+-include $(wildcard plugins/*.mk)
 
 all: $(PROGRAM)
 
