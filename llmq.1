@@ -1,0 +1,136 @@
+.\" llmq.1
+.TH LLMQ 1 "23 April 2023" "Version 0.1.0" "llmq User Manual"
+
+.SH NAME
+llmq \- a query CLI and plugin framework for LLM-powered pipe expressions
+and YAML-formatted chat contexts.
+
+.SH SYNOPSIS
+.B llmq
+[\fB\-hqiv\fR]
+\fIACTION\fR
+[\fIPLUGIN\fR][://\fICONTEXT\fR]
+[\fIOPTIONS\fR]...
+[\fIMSGS\fR]...
+
+.SH DESCRIPTION
+.B llmq
+is essentially a wrapper for LLM API plugins that manages command-line
+arguments, context and configuration files, authentication, and I/O.
+See the README to develop your own plugins.
+.PP
+Each plugin defines paths for configuration and conversation context storage,
+which are $XDG_CONFIG_HOME/llmq/PLUGIN and $XDG_DATA_DIR/llmq/PLUGIN by default
+(or ~/.config/llmq/PLUGIN and ~/.local/share/llmq/PLUGIN if XDG dirs not defined).
+Directories are created if they do not exist.
+
+.SH LLMQ FLAGS
+.TP
+.B \-h, \-\-help
+display a help message and exit.
+.TP
+.B \-q, \-\-quiet
+do not print reply to stdout (chat mode only).
+.TP
+.B \-i, \-\-no-stdin
+does not read from stdin, even if MSGS is missing (query/chat). 
+.TP
+.B \-v, \-\-verbose
+print cURL and other llmq diagnostics to stderr.
+
+.SH ACTION
+.TP
+\fIq query\fR
+queries and streams response without modifying the context.
+.TP
+\fIc chat\fR
+queries, streams response, and updates context.
+.TP
+\fIi init\fR
+(re-)initializes the context file using OPTIONS.
+.TP
+\fIe edit\fR
+edits the context file with $EDITOR or vi.
+.TP
+\fIa auth\fR
+edits the authfile with $EDITOR or vi.
+.TP
+\fIp path\fR
+prints the absolute filepath of the context.
+.TP
+\fIr rm\fR
+removes the CONTEXT file.
+.TP
+\fIk kill\fR
+terminates all llmq processes with CONTEXT open, if able.
+.TP
+\fIl list\fR
+list all available plugins and their descriptions.
+.TP
+\fIh help\fR
+display the plugin help and exit.
+
+.TP
+note: CONTEXT required for all actions except auth, path, list, and help.
+
+.SH PLUGIN
+At present, gpt is the only plugin available.
+.br
+See `llmq help gpt` for more info.
+
+.SH CONTEXT
+A YAML-encoded query/chat context file (e.g. model parameters, messages).
+.br
+CONTEXT omits the '.yml' suffix present on all context files.
+
+.SH OPTIONS
+Named arguments or flags to pass to the plugin.
+
+.SH MSGS
+Positional plugin args. Typically messages, but depends on the plugin.
+.br
+If ACTION is query or chat (without -i), reads stdin into one MSG.
+
+.SH EXAMPLES
+.P
+Prepare a calculator prompt
+.br
+.B llmq init gpt://calc -m gpt-4 -s 'act as a calculator and print only the result of the expression'
+.P
+Send a request and stream the response to stdout
+.br
+.B llmq query gpt://calc '4 + 36' # 40
+.P
+Chain invocations
+.br
+.B echo '24 * 52' | llmq q gpt://calc | sed 's/$/ \\\/ 13/' | llmq q gpt://calc' # 96
+.P
+Prepare a chat
+.br
+.B llmq init gpt://chat -m gpt-4 -S true
+.P
+Update the chat with each new message
+.br
+.B llmq chat gpt://chat 'Hello!' # Hello! How can I help you today?
+.br
+.B llmq q gpt://chat 'What did I say before this?' # Before this, you said, \(lqHello!\(rq
+
+.SH AUTHOR
+Written by Justin Collier.
+
+.SH COPYRIGHT
+.P
+Copyright (C) 2023 Justin Collier <m@jpcx.dev>
+.P
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+.P
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+.P
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.

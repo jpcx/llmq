@@ -1,0 +1,8 @@
+compile_commands.json
+.cache
+.build
+llmq
+.sess*
+plugins/*
+!plugins/gpt.cc
+!plugins/gpt.h
