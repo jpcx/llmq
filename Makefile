@@ -29,7 +29,7 @@ PREFIX  ?= /usr/local
 BINDIR  ?= $(PREFIX)/bin
 MANDIR  ?= $(PREFIX)/share/man/man1
 
-CXXFLAGS += $(shell pkg-config --cflags libcurl)       \
+CXXFLAGS += $(shell pkg-config --cflags libcurl)   \
 	    -std=c++20 -Wall -Wextra -pedantic -Werror \
 	    -O3 -I. -fmax-errors=1
 LDFLAGS  += $(shell pkg-config --libs libcurl)
@@ -37,13 +37,13 @@ LDFLAGS  += $(shell pkg-config --libs libcurl)
 SOURCES = llmq.cc 3rdparty/ryml.cc $(wildcard plugins/*.cc)
 OBJECTS = $(patsubst %.cc,.build/%.o,$(SOURCES))
 
--include $(wildcard plugins/*.mk)
-
 all: $(PROGRAM)
+
+-include $(wildcard plugins/*.mk)
 
 .build/%.o: %.cc
 	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) -c $< -o $@ $(LDFLAGS)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(PROGRAM): $(OBJECTS)
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
