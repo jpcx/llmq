@@ -823,7 +823,7 @@ main(int argc, char** argv) {
 
 	// create the authfile if it does not exist
 	if (!fs::exists(authfile)) {
-		mkdir_p(confdir);
+		mkdir_p(authfile.parent_path());
 		touch(authfile, S_IRUSR | S_IWUSR);
 	}
 
@@ -850,7 +850,7 @@ main(int argc, char** argv) {
 
 	// create the context file if it does not exist
 	if (!fs::exists(ctxfile)) {
-		mkdir_p(datadir);
+		mkdir_p(ctxfile.parent_path());
 		touch(ctxfile, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	}
 
