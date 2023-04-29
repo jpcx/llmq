@@ -48,6 +48,7 @@ inline struct gpt : plugin {
 	void append_headers(std::function<void(std::string_view)> append) const noexcept override;
 	[[nodiscard]] std::optional<std::string_view> post() const override;
 	void onreply(std::string_view reply, bool print) override;
+	void onfinish(bool print) override;
 
    protected:
 	ryml::Tree    ctx;

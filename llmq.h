@@ -104,8 +104,11 @@ struct plugin {
 	[[nodiscard]] virtual std::optional<std::string_view> post() const;
 
 	// integrate a reply into the context.
-	// onreply should print content if print is true (and if applicable).
+	// onreply should print content if print is true (if applicable).
 	virtual void onreply(std::string_view reply, bool print) = 0;
+
+	// called when the response has completed. prints a newline by default (if print).
+	virtual void onfinish(bool print);
 };
 
 } // namespace llmq

@@ -236,6 +236,14 @@ plugin::post() const {
 	return std::nullopt;
 }
 
+void
+plugin::onfinish(bool print) {
+	if (print) {
+		// by default, output a newline
+		std::cout << '\n';
+	}
+}
+
 inline static std::vector<plugin*>* registry{nullptr};
 inline static bool                  main_started{false};
 
@@ -709,7 +717,8 @@ plugop(std::string_view plugname, std::string_view opdescr, Op&& op) noexcept {
 }
 
 inline static void
-request(plugin* plug, bool verbose, std::function<void(std::string_view)> plug_update) {
+request(plugin* plug, bool verbose, std::function<void(std::string_view)> plug_update,
+        std::function<void()> plug_finish) {
 	auto init = ::curl_global_init(CURL_GLOBAL_DEFAULT);
 	if (init != CURLE_OK)
 		die("cURL error: ", ::curl_easy_strerror(init));
@@ -759,12 +768,11 @@ request(plugin* plug, bool verbose, std::function<void(std::string_view)> plug_u
 			die("cURL error: ", ::curl_easy_strerror(_));
 	}
 
-	// conclude stdout logging with a newline
-	std::cout << '\n';
-
 	::curl_easy_cleanup(curl);
 	::curl_slist_free_all(headers);
 	::curl_global_cleanup();
+
+	plug_finish();
 }
 
 inline static struct ryml_error_handler {
@@ -901,12 +909,20 @@ main(int argc, char** argv) {
 
 	if (a.action == query) {
 		// make the request without saving context
-		request(a.plugin, a.verbose, [a](std::string_view reply) {
-			// update plugin and print deltas
-			plugop(a.plugin->name(), "process reply using", [&a, &reply] {
-				a.plugin->onreply(reply, true);
-			});
-		});
+		request(
+		    a.plugin, a.verbose,
+		    [a](std::string_view reply) {
+			    // update plugin and print deltas
+			    plugop(a.plugin->name(), "process reply using", [&a, &reply] {
+				    a.plugin->onreply(reply, true);
+			    });
+		    },
+		    [a] {
+			    // notify the plugin that the request has completed
+			    plugop(a.plugin->name(), "finalize", [&a] {
+				    a.plugin->onfinish(true);
+			    });
+		    });
 	} else {
 		// efficient yaml writer that manages locking
 		context_writer wctx{std::move(ctxfile),
@@ -918,16 +934,25 @@ main(int argc, char** argv) {
 			}));
 		} else if (a.action == chat) {
 			// make the request; save context each reply
-			request(a.plugin, a.verbose, [a, &wctx](std::string_view reply) {
-				// update plugin and print deltas
-				plugop(a.plugin->name(), "process reply using", [&a, &reply] {
-					a.plugin->onreply(reply, !a.quiet);
-				});
+			request(
+			    a.plugin, a.verbose,
+			    [a, &wctx](std::string_view reply) {
+				    // update plugin and print deltas
+				    plugop(a.plugin->name(), "process reply using", [&a, &reply] {
+					    a.plugin->onreply(reply, !a.quiet);
+				    });
 
-				wctx.overwrite(plugop(a.plugin->name(), "get context from", [&a] {
-					return a.plugin->context();
-				}));
-			});
+				    wctx.overwrite(
+					plugop(a.plugin->name(), "get context from", [&a] {
+						return a.plugin->context();
+					}));
+			    },
+			    [a] {
+				    // notify the plugin that the request has completed
+				    plugop(a.plugin->name(), "finalize", [&a] {
+					    a.plugin->onfinish(!a.quiet);
+				    });
+			    });
 		} else {
 			die("internal error in action handling logic");
 		}
