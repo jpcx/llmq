@@ -294,7 +294,7 @@ inline static constexpr std::string_view help =
     "\n"
     "notes:\n"
     " - ACTION always required, except when using `-h`\n"
-    " - CONTEXT required for q|c|i|e|r|k\n"
+    " - CONTEXT required for c|i|e|r|k\n"
     " - OPTIONS/MSGS/stdin ignored for e|a|p|r|k|l|h\n"
     " - stdin ignored for i\n"
     "\n"
@@ -839,9 +839,9 @@ main(int argc, char** argv) {
 	if (a.action == auth)
 		spawn_editor(confdir.parent_path(), authfile);
 
-	// for all other actions, context is required
-	if (a.context.empty())
-		die("CONTEXT required for query, chat, init, edit, rm, and kill");
+	// for all other actions (except query), context is required
+	if (a.action != query && a.context.empty())
+		die("CONTEXT required for chat, init, edit, rm, and kill");
 
 	// if action is rm, remove the context and exit
 	if (a.action == rm) {
@@ -856,8 +856,8 @@ main(int argc, char** argv) {
 		std::exit(0);
 	}
 
-	// create the context file if it does not exist
-	if (!fs::exists(ctxfile)) {
+	// create the context file if needed
+	if (!a.context.empty() && !fs::exists(ctxfile)) {
 		mkdir_p(ctxfile.parent_path());
 		touch(ctxfile, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 	}
@@ -876,9 +876,9 @@ main(int argc, char** argv) {
 		// set rapidyaml to use exceptions
 		ryml::set_callbacks(ryml_error_handler.callbacks());
 
-		// read the entire context file as YAML
+		// read the entire context file as YAML (if needed)
 		ryml::Tree ctx;
-		{
+		if (!a.context.empty()) {
 			FILE* f = open_file(ctxfile.c_str(), "r");
 			oldctx  = read_file(ctxfile, f);
 			try {

@@ -41,7 +41,7 @@ print cURL and other llmq diagnostics to stderr.
 .SH ACTION
 .TP
 \fIq query\fR
-queries and streams response without modifying the context.
+queries and streams response without saving (context optional).
 .TP
 \fIc chat\fR
 queries, streams response, and updates context.
@@ -71,7 +71,15 @@ list all available plugins and their descriptions.
 display the plugin help and exit.
 
 .TP
-note: CONTEXT required for all actions except auth, path, list, and help.
+notes:
+.P
+- ACTION always required, except when using -h
+.br
+- CONTEXT required for c|i|e|r|k.
+.br
+- OPTIONS/MSGS/stdin ingored for e|a|p|r|k|l|h
+.br
+- stdin ignored for i
 
 .SH PLUGIN
 At present, gpt is the only plugin available.

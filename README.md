@@ -69,7 +69,10 @@ q | query
 llmq query plug://ctx "hello"
 
 # listens for stdin if no MSGS supplied
-echo "hi!" | llmq q plug://ctx
+echo "hey!" | llmq q plug://ctx
+
+# a query may omit context if the plugin supports it
+echo "listen!" | llmq q plug
 ```
 
 c | chat
@@ -144,7 +147,7 @@ llmq help plug
 **notes:**
 
 - ACTION always required, except when using `-h`
-- CONTEXT required for `q|c|i|e|r|k`
+- CONTEXT required for `c|i|e|r|k`
 - OPTIONS/MSGS/stdin ignored for `e|a|p|r|k|l|h`
 - stdin ignored for `i`
 
