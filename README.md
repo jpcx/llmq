@@ -284,7 +284,13 @@ A demonstration of the original motivation behind this tool (generic editor inte
 - `:sil! !llmq -iq c gpt://demo &` starts the request and (quietly) updates the context.
 - `:sil! !llmq k gpt://demo` kills the process.
 
-![](./.assets/demo.gif)
+![](./.assets/demo1.gif)
+
+A demonstration of the potential benefits of integrating LLMs into bash pipelines.
+
+- See `examples/cmd.sh` for the environment used for this demo.
+
+![](./.assets/demo2.gif)
 
 ## <a name=contributing>Contributing</a>
 
