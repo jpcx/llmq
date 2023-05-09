@@ -64,7 +64,7 @@ Files and directories are automatically created/populated if they do not exist.
 **-v, --verbose**  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;print cURL and other llmq diagnostics to stderr.
 
-note: any flags after PLUGIN are considered OPTIONS
+note: any flags after PLUGIN are considered plugin OPTIONS
 
 ### ACTION
 
@@ -102,11 +102,11 @@ llmq init plug://ctx -m modelname
 llmq init plug://~foo -m modelname
 
 # creates a temporary, unique context file in the temp dir
-tmp=`llmq init plug -m modelname`
+tmpctx=`llmq init plug -m modelname`
 
 # references the temporary context
-# note: '~' is stored in the string printed by init
-llmq q gpt://$tmp "hello"
+# note: tmpctx begins with "plug://~"
+llmq q $tmpctx "hello"
 ```
 
 e | edit
