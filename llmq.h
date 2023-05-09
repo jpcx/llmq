@@ -1,16 +1,15 @@
 #ifndef LLMQ_H_INCLUDED
 #define LLMQ_H_INCLUDED
-//
 //  oooo  oooo
 //  `888  `888
 //   888   888  ooo. .oo.  .oo.    .ooooo oo
 //   888   888  `888P"Y88bP"Y88b  d88' `888
 //   888   888   888   888   888  888   888
 //  o888o o888o o888o o888o o888o `V8bod888
-//                                      888.
-//  a query CLI, plugin framework, and  8P'
-//  I/O manager for conversational AIs  "
-//
+//  ┌─────────────────────────────────┐ 888
+//  │ a query CLI and context manager │ 888.
+//  │ for LLM-powered shell pipelines │ 8P'
+//  └─────────────────────────────────┘ "
 //  Copyright (C) 2023 Justin Collier <m@jpcx.dev>
 //
 //    This program is free software: you can redistribute it and/or modify
@@ -63,6 +62,11 @@ struct plugin {
 	// (or ~/.local/share/llmq/PLUGIN if XDG_DATA_HOME is not found).
 	// the datadir will be created if not found.
 	[[nodiscard]] virtual std::filesystem::path datadir() const noexcept;
+
+	// path to the temporary plugin context storage. called before init.
+	// if not overridden (or empty), uses /tmp/llmq/PLUGIN.
+	// the tmpdir will be created if not found.
+	[[nodiscard]] virtual std::filesystem::path tmpdir() const noexcept;
 
 	// getopt shortopts. empty string_view disables shortopts. called before init.
 	[[nodiscard]] virtual std::string_view shortopts() const noexcept;

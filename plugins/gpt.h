@@ -1,16 +1,15 @@
 #ifndef LLMQ_PLUGINS_GPT_H_INCLUDED
 #define LLMQ_PLUGINS_GPT_H_INCLUDED
-//
 //  oooo  oooo
 //  `888  `888
 //   888   888  ooo. .oo.  .oo.    .ooooo oo
 //   888   888  `888P"Y88bP"Y88b  d88' `888
 //   888   888   888   888   888  888   888
 //  o888o o888o o888o o888o o888o `V8bod888
-//                                      888.
-//  a query CLI, plugin framework, and  8P'
-//  I/O manager for conversational AIs  "
-//
+//  ┌─────────────────────────────────┐ 888
+//  │ a query CLI and context manager │ 888.
+//  │ for LLM-powered shell pipelines │ 8P'
+//  └─────────────────────────────────┘ "
 //  Copyright (C) 2023 Justin Collier <m@jpcx.dev>
 //
 //    This program is free software: you can redistribute it and/or modify

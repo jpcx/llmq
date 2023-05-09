@@ -1,14 +1,13 @@
-//
 //  oooo  oooo
 //  `888  `888
 //   888   888  ooo. .oo.  .oo.    .ooooo oo
 //   888   888  `888P"Y88bP"Y88b  d88' `888
 //   888   888   888   888   888  888   888
 //  o888o o888o o888o o888o o888o `V8bod888
-//                                      888.
-//  a query CLI, plugin framework, and  8P'
-//  I/O manager for conversational AIs  "
-//
+//  ┌─────────────────────────────────┐ 888
+//  │ a query CLI and context manager │ 888.
+//  │ for LLM-powered shell pipelines │ 8P'
+//  └─────────────────────────────────┘ "
 //  Copyright (C) 2023 Justin Collier <m@jpcx.dev>
 //
 //    This program is free software: you can redistribute it and/or modify
@@ -34,8 +33,12 @@ extern "C" {
 #include <sys/stat.h>
 }
 
+#include <chrono>
+#include <ctime>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
 
 namespace fs = std::filesystem;
 
@@ -221,6 +224,11 @@ plugin::datadir() const noexcept {
 	return "";
 }
 
+fs::path
+plugin::tmpdir() const noexcept {
+	return "";
+}
+
 std::string_view
 plugin::shortopts() const noexcept {
 	return "";
@@ -262,17 +270,23 @@ plugin::plugin(std::source_location loc) noexcept {
 }
 
 inline static constexpr std::string_view help =
-    "usage: llmq [-hqiv] [ACTION] [PLUGIN][://CONTEXT] [OPTIONS]... [MSGS]...\n"
-    "A query CLI, plugin framework, and I/O manager for conversational AIs.\n"
+    "usage: llmq [-hqiv] [ACTION] [PLUGIN][://[~]CONTEXT] [OPTIONS]... [--] [MSGS]...\n"
+    "A query CLI and context manager for LLM-powered shell pipelines.\n"
     "\n"
-    "The llmq executable is essentially a wrapper for LLM API plugins that manages\n"
-    "command-line arguments, context and config files, authentication, and I/O.\n"
-    "See the README for plugin development guidelines.\n"
+    "llmq is essentially a wrapper for LLM API plugins that manages command-line\n"
+    "arguments, context and configuration files, authentication, and I/O.\n"
+    "See the README to develop your own plugins.\n"
     "\n"
     "Each plugin defines paths for configuration and conversation context storage,\n"
     "which are $XDG_CONFIG_HOME/llmq/PLUGIN and $XDG_DATA_DIR/llmq/PLUGIN by default\n"
-    "(or ~/.config/... and ~/.local/share/... if XDG dirs not defined).\n"
+    "(or ~/.config/llmq/PLUGIN and ~/.local/share/llmq/PLUGIN if XDG dirs not defined).\n"
     "Directories are created if they do not exist.\n"
+    "\n"
+    "llmq can also create and use temporary context files, which are stored in\n"
+    "/tmp/llmq/PLUGIN. Any CONTEXT argument that begins with '~' is stored\n"
+    "relative to the temp directory, not the data directory. Additionally,\n"
+    "calling init without CONTEXT will create a unique temporary file and\n"
+    "print its name.\n"
     "\n"
     "llmq flags:\n"
     "  -h --help      display this help and exit.\n"
@@ -287,15 +301,15 @@ inline static constexpr std::string_view help =
     "  e edit   edits the context file with $EDITOR or vi.\n"
     "  a auth   edits the authfile with $EDITOR or vi.\n"
     "  p path   prints the absolute filepath of the plugin or context.\n"
-    "  r rm     removes the CONTEXT file.\n"
+    "  d del    deletes the CONTEXT file.\n"
     "  k kill   terminates all llmq processes with CONTEXT open, if able.\n"
     "  l list   list all available plugins and their descriptions.\n"
     "  h help   display the llmq or plugin help and exit.\n"
     "\n"
     "notes:\n"
     " - ACTION always required, except when using `-h`\n"
-    " - CONTEXT required for c|i|e|r|k\n"
-    " - OPTIONS/MSGS/stdin ignored for e|a|p|r|k|l|h\n"
+    " - CONTEXT required for c|e|d|k\n"
+    " - OPTIONS/MSGS/stdin ignored for e|a|p|d|k|l|h\n"
     " - stdin ignored for i\n"
     "\n"
     "PLUGIN:\n"
@@ -315,14 +329,14 @@ inline static constexpr std::string_view help =
 
 inline static constexpr std::string_view usage = help.substr(0, help.find('\n'));
 
-enum class action : uint8_t { unset, query, chat, init, edit, auth, path, rm, kill, list, help };
+enum class action : uint8_t { unset, query, chat, init, edit, auth, path, del, kill, list, help };
 
 [[nodiscard]] inline static constexpr action
 parse_action(std::string_view s) noexcept {
 	using namespace std::literals;
 	using enum llmq::action;
 	constexpr auto opts = std::array{"query"sv, "chat"sv, "init"sv, "edit"sv, "auth"sv,
-	                                 "path"sv,  "rm"sv,   "kill"sv, "list"sv, "help"sv};
+	                                 "path"sv,  "del"sv,  "kill"sv, "list"sv, "help"sv};
 
 	constexpr std::size_t npos = std::numeric_limits<std::size_t>::max();
 	std::size_t           found{npos};
@@ -344,11 +358,29 @@ parse_action(std::string_view s) noexcept {
 		case 3: static_assert(opts[3] == "edit"); return edit;
 		case 4: static_assert(opts[4] == "auth"); return auth;
 		case 5: static_assert(opts[5] == "path"); return path;
-		case 6: static_assert(opts[6] == "rm"); return rm;
+		case 6: static_assert(opts[6] == "del"); return del;
 		case 7: static_assert(opts[7] == "kill"); return kill;
 		case 8: static_assert(opts[8] == "list"); return list;
 		case 9: static_assert(opts[9] == "help"); return help;
 		default: static_assert(opts.size() == 10); return unset;
+	}
+}
+
+[[nodiscard]] inline constexpr std::string_view
+serialize_action(action v) noexcept {
+	using enum llmq::action;
+	switch (v) {
+		case query: return "query";
+		case chat: return "chat";
+		case init: return "init";
+		case edit: return "edit";
+		case auth: return "auth";
+		case path: return "path";
+		case del: return "del";
+		case kill: return "kill";
+		case list: return "list";
+		case help: return "help";
+		default: return "unset";
 	}
 }
 
@@ -373,132 +405,6 @@ static_assert(parse_plug_ctx_arg("plugin://").first == "plugin");
 static_assert(parse_plug_ctx_arg("plugin://").second == "");
 static_assert(parse_plug_ctx_arg("plugin").first == "plugin");
 static_assert(parse_plug_ctx_arg("plugin").second == "");
-
-[[nodiscard]] inline static fs::path
-get_homedir() noexcept {
-	char const* home = std::getenv("HOME");
-
-	if (home) {
-		if (!fs::exists(home) || !fs::is_directory(home))
-			die("invalid $HOME directory ", home);
-		return home;
-	}
-
-	errno      = 0;
-	passwd* pw = getpwuid(getuid());
-	if (!pw || errno)
-		die("could not find $XDG_CONFIG_HOME or $HOME, and "
-		    "getwpuid fallback failed: ",
-		    std::strerror(errno));
-
-	home = pw->pw_dir;
-	if (!home)
-		die("could not find $XDG_CONFIG_HOME or $HOME, and "
-		    "getwpuid fallback failed un an unexpected way");
-	if (!fs::exists(home) || !fs::is_directory(home))
-		die("invalid getpwuid home directory: ", home);
-
-	return home;
-}
-
-// returns absolute path
-[[nodiscard]] inline static fs::path
-plugdir_fallback(plugin const& plug, std::string_view env,
-                 fs::path const& fallback_homerel) noexcept {
-	char const* envdir = std::getenv(env.data());
-
-	if (envdir) {
-		if (!fs::exists(envdir) || !fs::is_directory(envdir))
-			die("invalid $", env, " directory ", envdir);
-		return envdir;
-	}
-
-	fs::path dir = get_homedir() / fallback_homerel / plug.name();
-
-	if (fs::exists(dir) && !fs::is_directory(dir))
-		die("fallback directory for plugin <", plug.name(), "> ", dir,
-		    " exists and is not a directory");
-
-	return fs::absolute(dir);
-}
-
-// returns absolute path
-[[nodiscard]] inline static fs::path
-compute_datadir(plugin const& plug) noexcept {
-	if (!plug.datadir().empty()) {
-		auto dir = plug.datadir();
-		if (fs::exists(dir) && !fs::is_directory(dir))
-			die("configured datadir for plugin <", plug.name(), "> ", dir,
-			    " exists and is not a directory");
-		return fs::absolute(dir);
-	}
-	return plugdir_fallback(plug, "XDG_DATA_HOME", ".local/share/llmq");
-}
-
-// returns absolute path
-[[nodiscard]] inline static fs::path
-compute_confdir(plugin const& plug) noexcept {
-	if (!plug.confdir().empty()) {
-		auto dir = plug.confdir();
-		if (fs::exists(dir) && !fs::is_directory(dir))
-			die("configured confdir for plugin <", plug.name(), "> ", dir,
-			    " exists and is not a directory");
-		return fs::absolute(dir);
-	}
-	return plugdir_fallback(plug, "XDG_CONFIG_HOME", ".config/llmq");
-}
-
-// checks if authfile has 400 or 600 permissions
-[[nodiscard]] inline static bool
-is_private_file(char const* auth) {
-	struct stat stat;
-	if (::stat(auth, &stat))
-		die("error getting the status of authfile \"", auth, "\": ", std::strerror(errno));
-	mode_t perms = stat.st_mode & (S_IRWXU | S_IRWXG | S_IRWXO);
-	return (perms == S_IRUSR) || (perms == (S_IRUSR | S_IWUSR));
-}
-
-[[nodiscard]] inline static fs::path
-compute_authfile(fs::path const& confdir) noexcept {
-	auto auth = confdir / ".auth";
-
-	if (fs::exists(auth)) {
-		if (!fs::is_regular_file(auth))
-			die("plugin authfile ", auth, " exists and is not a regular file");
-		if (!is_private_file(auth.c_str()))
-			warn("plugin authfile ", auth,
-			     " has insecure permissions! please set to 400 or 600");
-	}
-
-	return auth;
-}
-
-// opens $EDITOR or vi on file
-[[noreturn]] inline static void
-spawn_editor(fs::path const& dir, fs::path const& file) noexcept {
-	char const* editor = std::getenv("EDITOR");
-	if (!editor) {
-		warn("$EDITOR does not exist, falling back to vi");
-		editor = "vi";
-	}
-
-	if (::chdir(dir.c_str()))
-		die("failed to change directory for editor: ", std::strerror(errno));
-	if (std::system((std::string{editor} + " " + std::string{file}).c_str()))
-		die("could not edit ", file, ": ", std::strerror(errno));
-	std::exit(0);
-}
-
-[[nodiscard]] static std::string_view
-trim(std::string_view s) noexcept {
-	auto begin = s.begin();
-	auto end   = s.end();
-	while (begin != end && std::isspace(*begin))
-		++begin;
-	while (begin != end && std::isspace(*(end - 1)))
-		--end;
-	return {begin, end};
-}
 
 struct context_writer {
    public:
@@ -578,7 +484,7 @@ struct llmq_args_result {
 	enum action    action;
 	unsigned       ofs; // offset for argc after parsing
 	struct plugin* plugin;
-	fs::path       context;
+	std::string    context;
 };
 
 // reads all args up to OPTIONS
@@ -594,14 +500,11 @@ parse_llmq_args(int argc, char** argv) {
 	    .context  = "",
 	};
 
-	bool found_ddash = false;
-
 	for (; res.ofs < (unsigned)argc; ++res.ofs) {
-		if (!std::strcmp(argv[res.ofs], "--")) {
-			found_ddash = true;
-			continue;
-		}
-		if (!found_ddash && argv[res.ofs][0] == '-') {
+		if (argv[res.ofs][0] == '-') {
+			if (!std::strcmp(argv[res.ofs], "--"))
+				die("\"--\" may only be used to separate OPTIONS from MSGS after "
+				    "PLUGIN is provided");
 			if (hasopt(argv[res.ofs], 'h', "--help"))
 				std::exit((std::cout << help << '\n', 0));
 			if (hasopt(argv[res.ofs], 'q', "--quiet")) {
@@ -629,6 +532,8 @@ parse_llmq_args(int argc, char** argv) {
 					die("plugin \"", plg, "\" not found\n");
 				res.plugin = *it;
 			}
+			if (!ctx.empty() && ctx.back() == '/')
+				die("CONTEXT \"", ctx, "\" is not a valid filename");
 			res.context = ctx;
 			break;
 		}
@@ -637,19 +542,7 @@ parse_llmq_args(int argc, char** argv) {
 	if (res.action == action::unset)
 		std::exit((std::cerr << usage << '\n', 1));
 
-	if (res.action == action::list) {
-		std::size_t max = 0;
-		for (auto* v : *registry)
-			max = std::max(max, v->name().size());
-		for (auto* v : *registry)
-			std::cout << std::left << std::setw(max + 1) << v->name() << ": "
-				  << v->descr() << std::endl;
-		std::exit(0);
-	}
-
-	if (!res.plugin) {
-		if (res.action == action::help)
-			std::exit((std::cout << help << '\n', 0));
+	if (!res.plugin && res.action != action::help && res.action != action::list) {
 		std::exit((std::cerr << usage << '\n', 1));
 	}
 
@@ -689,6 +582,228 @@ parse_plugin_args(int argc, char** argv, unsigned ofs, plugin* plugin, bool no_s
 	}
 
 	return args;
+}
+
+[[nodiscard]] inline static fs::path
+get_homedir() noexcept {
+	char const* home = std::getenv("HOME");
+
+	if (home) {
+		if (!fs::exists(home) || !fs::is_directory(home))
+			die("invalid $HOME directory ", home);
+		return home;
+	}
+
+	errno      = 0;
+	passwd* pw = getpwuid(getuid());
+	if (!pw || errno)
+		die("could not find $XDG_CONFIG_HOME or $HOME, and "
+		    "getwpuid fallback failed: ",
+		    std::strerror(errno));
+
+	home = pw->pw_dir;
+	if (!home)
+		die("could not find $XDG_CONFIG_HOME or $HOME, and "
+		    "getwpuid fallback failed un an unexpected way");
+	if (!fs::exists(home) || !fs::is_directory(home))
+		die("invalid getpwuid home directory: ", home);
+
+	return home;
+}
+
+// returns absolute path
+[[nodiscard]] inline static fs::path
+homedir_fallback(plugin const& plug, std::string_view env,
+                 fs::path const& fallback_homerel) noexcept {
+	char const* envdir = std::getenv(env.data());
+
+	if (envdir) {
+		if (!fs::exists(envdir) || !fs::is_directory(envdir))
+			die("invalid $", env, " directory ", envdir);
+		return envdir;
+	}
+
+	fs::path dir = get_homedir() / fallback_homerel / plug.name();
+
+	if (fs::exists(dir) && !fs::is_directory(dir))
+		die("fallback directory for plugin <", plug.name(), "> ", dir,
+		    " exists and is not a directory");
+
+	return fs::absolute(dir);
+}
+
+// returns absolute path
+[[nodiscard]] inline static fs::path
+compute_datadir(llmq_args_result const& a) noexcept {
+	if (!a.plugin->datadir().empty()) {
+		auto dir = a.plugin->datadir();
+		if (fs::exists(dir) && !fs::is_directory(dir))
+			die("configured datadir for plugin <", a.plugin->name(), "> ", dir,
+			    " exists and is not a directory");
+		return fs::absolute(dir);
+	}
+	return homedir_fallback(*a.plugin, "XDG_DATA_HOME", ".local/share/llmq");
+}
+
+// returns absolute path
+[[nodiscard]] inline static fs::path
+compute_tmpdir(llmq_args_result const& a) noexcept {
+	if (!a.plugin->tmpdir().empty()) {
+		auto dir = a.plugin->tmpdir();
+		if (fs::exists(dir) && !fs::is_directory(dir))
+			die("configured tmpdir for plugin <", a.plugin->name(), "> ", dir,
+			    " exists and is not a directory");
+		return fs::absolute(dir);
+	}
+	auto dir = fs::path{"/tmp/llmq"} / a.plugin->name();
+	if (fs::exists(dir) && !fs::is_directory(dir))
+		die("default tmpdir for plugin <", a.plugin->name(), "> ", dir,
+		    " exists and is not a directory");
+	return dir;
+}
+
+// returns absolute path
+[[nodiscard]] inline static fs::path
+compute_confdir(llmq_args_result const& a) noexcept {
+	if (!a.plugin->confdir().empty()) {
+		auto dir = a.plugin->confdir();
+		if (fs::exists(dir) && !fs::is_directory(dir))
+			die("configured confdir for plugin <", a.plugin->name(), "> ", dir,
+			    " exists and is not a directory");
+		return fs::absolute(dir);
+	}
+	return homedir_fallback(*a.plugin, "XDG_CONFIG_HOME", ".config/llmq");
+}
+
+// returns absolute path
+[[nodiscard]] inline static fs::path
+compute_ctxfile(llmq_args_result const& a) noexcept {
+	if (a.context.empty())
+		die(serialize_action(a.action), " requires CONTEXT");
+	fs::path f;
+	if (a.context.front() != '~')
+		f = compute_datadir(a);
+	else
+		f = compute_tmpdir(a);
+	f /= a.context;
+	f += ".yml";
+	return f;
+}
+
+// finds a new tempfile to use
+[[nodiscard]] inline static std::string
+compute_tmpctx(llmq_args_result const& a) noexcept {
+	fs::path dir;
+	dir            = compute_tmpdir(a);
+	auto        tt = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	std::tm*    tm = std::localtime(&tt);
+	std::string fname_base;
+	{
+		std::stringstream ss;
+		ss << "~" << std::put_time(tm, "%Y%m%d%H%M%S");
+		fname_base = ss.str();
+	}
+
+	unsigned idx = 0;
+	fs::path f;
+	do {
+		std::stringstream fname;
+		fname << fname_base << "." << idx << ".yml";
+		f = dir / fname.str();
+		++idx;
+	} while (std::filesystem::exists(f));
+
+	return f.filename().replace_extension("");
+}
+
+// returns absolute path
+[[nodiscard]] inline static fs::path
+prepare_ctxfile(llmq_args_result const& a) noexcept {
+	fs::path f = compute_ctxfile(a);
+
+	// create the authfile if it does not exist
+	if (!fs::exists(f)) {
+		mkdir_p(f.parent_path());
+		touch(f, S_IRUSR | S_IWUSR);
+	}
+
+	return f;
+}
+
+// checks if authfile has 400 or 600 permissions
+[[nodiscard]] inline static bool
+is_private_file(char const* auth) {
+	struct stat stat;
+	if (::stat(auth, &stat))
+		die("error getting the status of authfile \"", auth, "\": ", std::strerror(errno));
+	mode_t perms = stat.st_mode & (S_IRWXU | S_IRWXG | S_IRWXO);
+	return (perms == S_IRUSR) || (perms == (S_IRUSR | S_IWUSR));
+}
+
+[[nodiscard]] inline static fs::path
+compute_authfile(llmq_args_result const& a) noexcept {
+	fs::path dir  = compute_confdir(a);
+	auto     auth = dir / ".auth";
+
+	if (fs::exists(auth)) {
+		if (!fs::is_regular_file(auth))
+			die("plugin authfile ", auth, " exists and is not a regular file");
+		if (!is_private_file(auth.c_str()))
+			warn("plugin authfile ", auth,
+			     " has insecure permissions! please set to 400 or 600");
+	}
+
+	return auth;
+}
+
+// returns absolute path
+[[nodiscard]] inline static fs::path
+prepare_authfile(llmq_args_result const& a) noexcept {
+	fs::path f = compute_authfile(a);
+
+	// create the authfile if it does not exist
+	if (!fs::exists(f)) {
+		mkdir_p(f.parent_path());
+		touch(f, S_IRUSR | S_IWUSR);
+	}
+
+	return f;
+}
+
+// opens $EDITOR or vi on file
+inline static void
+spawn_editor(fs::path const& dir, fs::path const& file) noexcept {
+	char const* editor = std::getenv("EDITOR");
+	if (!editor) {
+		warn("$EDITOR does not exist, falling back to vi");
+		editor = "vi";
+	}
+
+	if (::chdir(dir.c_str()))
+		die("failed to change directory for editor: ", std::strerror(errno));
+	if (std::system((std::string{editor} + " " + std::string{file}).c_str()))
+		die("could not edit ", file, ": ", std::strerror(errno));
+}
+
+inline static void
+print_plugins() noexcept {
+	std::size_t max = 0;
+	for (auto* v : *registry)
+		max = std::max(max, v->name().size());
+	for (auto* v : *registry)
+		std::cout << std::left << std::setw(max + 1) << v->name() << ": " << v->descr()
+			  << std::endl;
+}
+
+[[nodiscard]] static std::string_view
+trim(std::string_view s) noexcept {
+	auto begin = s.begin();
+	auto end   = s.end();
+	while (begin != end && std::isspace(*begin))
+		++begin;
+	while (begin != end && std::isspace(*(end - 1)))
+		--end;
+	return {begin, end};
 }
 
 inline static size_t
@@ -805,69 +920,73 @@ main(int argc, char** argv) {
 	main_started = true;
 
 	// read plugin, action, and context (and assert validity)
+	// note: list and help are handled by parse_llmq_args
 	auto a = parse_llmq_args(argc, argv);
 
-	// print plugin help if requested
-	if (a.action == help)
-		return std::cout << a.plugin->help() << '\n', 0;
-
-	// compute the datadir using the preferences and defaults
-	fs::path datadir = compute_datadir(*a.plugin);
-
-	// at this point, context may still be empty
-	fs::path ctxfile = datadir;
-	if (!a.context.empty()) {
-		ctxfile /= a.context;
-		ctxfile += ".yml";
+	// handle any action that does not require the plugin to be initialized
+	switch (a.action) {
+		case edit: {
+			fs::path f = prepare_ctxfile(a);
+			return (spawn_editor(f.parent_path().parent_path(), f), 0);
+		}
+		case auth: {
+			fs::path f = prepare_authfile(a);
+			return (spawn_editor(f.parent_path().parent_path(), f), 0);
+		}
+		case path: {
+			fs::path f = compute_ctxfile(a);
+			return (std::cout << f.c_str() << '\n', 0);
+		}
+		case del: {
+			fs::path f = compute_ctxfile(a);
+			if (fs::exists(f)) {
+				fs::remove(f);
+				if (fs::is_empty(f.parent_path())) // .../llmq/PLUGIN
+					fs::remove(f.parent_path());
+				if (fs::is_empty(f.parent_path().parent_path())) // .../llmq
+					fs::remove(f.parent_path().parent_path());
+			} else {
+				die("invalid context path ", f);
+			}
+			return 0;
+		}
+		case kill: {
+			fs::path f = compute_ctxfile(a);
+			return (kill_ctx(a.verbose, f), 0);
+		}
+		case list: {
+			return (print_plugins(), 0);
+		}
+		case help: {
+			return (std::cout << llmq::help << '\n', 0);
+		}
+		default: break;
 	}
 
-	// if action is path, print the full context path (which may or may not have context)
-	if (a.action == path)
-		return std::cout << ctxfile.c_str() << '\n', 0;
-
-	// compute the other plugin paths
-	fs::path confdir  = compute_confdir(*a.plugin);
-	fs::path authfile = compute_authfile(confdir);
-
-	// create the authfile if it does not exist
-	if (!fs::exists(authfile)) {
-		mkdir_p(authfile.parent_path());
-		touch(authfile, S_IRUSR | S_IWUSR);
+	// prepare the necessary files
+	fs::path ctxfile;
+	fs::path authfile;
+	switch (a.action) {
+		case query:
+			ctxfile  = prepare_ctxfile(a);
+			authfile = prepare_authfile(a);
+			break;
+		case chat:
+			ctxfile  = prepare_ctxfile(a);
+			authfile = prepare_authfile(a);
+			break;
+		case init:
+			if (a.context.empty())
+				a.context = compute_tmpctx(a);
+			ctxfile  = prepare_ctxfile(a);
+			authfile = prepare_authfile(a);
+			break;
+		default: die("logic error in argument parser");
 	}
 
-	// if action is auth, open editor on context file and exit
-	if (a.action == auth)
-		spawn_editor(confdir.parent_path(), authfile);
-
-	// for all other actions (except query), context is required
-	if (a.action != query && a.context.empty())
-		die("CONTEXT required for chat, init, edit, rm, and kill");
-
-	// if action is rm, remove the context and exit
-	if (a.action == rm) {
-		if (fs::exists(ctxfile))
-			fs::remove(ctxfile);
-		std::exit(0);
-	}
-
-	// if action is kill, find the owning llmq process of the ctxfile and exit
-	if (a.action == kill) {
-		kill_ctx(a.verbose, ctxfile);
-		std::exit(0);
-	}
-
-	// create the context file if needed
-	if (!a.context.empty() && !fs::exists(ctxfile)) {
-		mkdir_p(ctxfile.parent_path());
-		touch(ctxfile, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
-	}
-
-	// if action is edit, open editor on context file and exit
-	if (a.action == edit)
-		spawn_editor(datadir.parent_path(), ctxfile);
-
+	// parse the context and initialize the plugin
 	std::string oldctx;
-	{ // plugin preparation
+	{
 
 		// read plugin args, if enabled
 		auto pargs =
@@ -907,6 +1026,7 @@ main(int argc, char** argv) {
 		}
 	}
 
+	// handle all plugin invocations
 	if (a.action == query) {
 		// make the request without saving context
 		request(
@@ -932,6 +1052,7 @@ main(int argc, char** argv) {
 			wctx.overwrite(plugop(a.plugin->name(), "get context from", [&a] {
 				return a.plugin->context();
 			}));
+			std::cout << a.plugin->name() << "://" << a.context << '\n';
 		} else if (a.action == chat) {
 			// make the request; save context each reply
 			request(

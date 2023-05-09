@@ -2,15 +2,15 @@
 .TH LLMQ 1 "26 April 2023" "Version 0.1.2" "llmq User Manual"
 
 .SH NAME
-llmq \- a query CLI and plugin framework for LLM-powered pipe expressions
-and YAML-formatted chat contexts.
+llmq \- a query CLI and context manager for LLM-powered shell pipelines.
 
 .SH SYNOPSIS
 .B llmq
 [\fB\-hqiv\fR]
-\fIACTION\fR
-[\fIPLUGIN\fR][://\fICONTEXT\fR]
+[\fIACTION\fR]
+[\fIPLUGIN\fR][://[\fB~\fR]\fICONTEXT\fR]
 [\fIOPTIONS\fR]...
+[\fB--\fR]
 [\fIMSGS\fR]...
 
 .SH DESCRIPTION
@@ -23,6 +23,12 @@ Each plugin defines paths for configuration and conversation context storage,
 which are $XDG_CONFIG_HOME/llmq/PLUGIN and $XDG_DATA_DIR/llmq/PLUGIN by default
 (or ~/.config/llmq/PLUGIN and ~/.local/share/llmq/PLUGIN if XDG dirs not defined).
 Directories are created if they do not exist.
+.PP
+llmq can also create and use temporary context files, which are stored in
+/tmp/llmq/PLUGIN. Any CONTEXT argument that begins with '~' is stored
+relative to the temp directory, not the data directory. Additionally,
+calling init without CONTEXT will create a unique temporary file and
+print its name.
 
 .SH LLMQ FLAGS
 .TP
@@ -37,6 +43,9 @@ does not read from stdin, even if MSGS is missing (query/chat).
 .TP
 .B \-v, \-\-verbose
 print cURL and other llmq diagnostics to stderr.
+
+.TP
+note: any flags after PLUGIN are considered OPTIONS
 
 .SH ACTION
 .TP
@@ -58,8 +67,8 @@ edits the authfile with $EDITOR or vi.
 \fIp path\fR
 prints the absolute filepath of the context.
 .TP
-\fIr rm\fR
-removes the CONTEXT file.
+\fId del\fR
+deletes the CONTEXT file.
 .TP
 \fIk kill\fR
 terminates all llmq processes with CONTEXT open, if able.
@@ -75,9 +84,9 @@ notes:
 .P
 - ACTION always required, except when using -h
 .br
-- CONTEXT required for c|i|e|r|k.
+- CONTEXT required for c|e|d|k.
 .br
-- OPTIONS/MSGS/stdin ingored for e|a|p|r|k|l|h
+- OPTIONS/MSGS/stdin ingored for e|a|p|d|k|l|h
 .br
 - stdin ignored for i
 
@@ -90,6 +99,8 @@ See `llmq help gpt` for more info.
 A YAML-encoded query/chat context file (e.g. model parameters, messages).
 .br
 CONTEXT omits the '.yml' suffix present on all context files.
+.br
+If CONTEXT begins with '~', it is stored in the temp directory.
 
 .SH OPTIONS
 Named arguments or flags to pass to the plugin.
@@ -113,15 +124,19 @@ Chain invocations
 .br
 .B echo '24 * 52' | llmq q gpt://calc | sed 's/$/ \\\/ 13/' | llmq q gpt://calc' # 96
 .P
-Prepare a chat
+Prepare a temporary chat
 .br
-.B llmq init gpt://chat -m gpt-4 -S true
+.B CTX=`llmq init gpt -m gpt-4 -S true`
 .P
 Update the chat with each new message
 .br
-.B llmq chat gpt://chat 'Hello!' # Hello! How can I help you today?
+.B llmq chat $CTX 'Hello!' # Hello! How can I help you today?
 .br
-.B llmq q gpt://chat 'What did I say before this?' # Before this, you said, \(lqHello!\(rq
+.B llmq chat $CTX 'What did I say before this?' # Before this, you said, \(lqHello!\(rq
+.P
+Get the path of the chat
+.br
+.B llmq path $CTX
 
 .SH AUTHOR
 Written by Justin Collier.
