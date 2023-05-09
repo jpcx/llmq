@@ -159,7 +159,7 @@ gpt::init(ryml::Tree ctx_, std::span<arg const> args, std::string auth) {
 		if (n == 'h')
 			exit((std::cout << help() << '\n', 0));
 
-		if (v.empty())
+		if (n != 0 && v.empty())
 			throw std::runtime_error{"invalid flag: " + (std::isalpha(n)
 			                                                 ? std::string{1, (char)n}
 			                                                 : std::to_string(n))};
