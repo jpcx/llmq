@@ -831,6 +831,65 @@ plugop(std::string_view plugname, std::string_view opdescr, Op&& op) noexcept {
 	}
 }
 
+[[nodiscard]] inline static std::string
+read_context(fs::path const& ctxfile) noexcept {
+	FILE*       f      = open_file(ctxfile.c_str(), "r");
+	std::string oldctx = read_file(ctxfile, f);
+	std::fclose(f);
+
+	return oldctx;
+}
+
+[[nodiscard]] inline static ryml::Tree
+parse_context(std::string_view oldctx) noexcept {
+	// read the entire context file as YAML (if needed)
+	ryml::Tree ctx;
+	try {
+		ctx = ryml::parse_in_arena(ryml::csubstr{oldctx.data(), oldctx.size()});
+	} catch (std::exception const& e) {
+		die("could not parse YAML context: ", e.what());
+	}
+
+	return ctx;
+}
+
+[[nodiscard]] inline std::string
+read_auth(fs::path const& authfile) noexcept {
+	FILE*       f    = open_file(authfile.c_str(), "r");
+	std::string auth = std::string{trim(read_file(authfile, f))};
+	std::fclose(f);
+	return auth;
+}
+
+inline static void
+init_plugin(int argc, char** argv, llmq_args_result& a, std::string const& oldctx,
+            fs::path const& authfile) noexcept {
+	ryml::Tree ctx = parse_context(oldctx);
+
+	// read plugin args, if enabled
+	auto args =
+	    parse_plugin_args(argc, argv, a.ofs, a.plugin, a.no_stdin || a.action == action::init);
+
+	// load authfile contents
+	std::string auth = read_auth(authfile);
+
+	plugop(a.plugin->name(), "initialize", [&a, &ctx, &args, &auth] {
+		a.plugin->init(std::move(ctx), std::move(args), std::move(auth));
+	});
+}
+
+[[nodiscard]] inline static context_writer
+init_plugctx(int argc, char** argv, llmq_args_result& a) noexcept {
+	fs::path    ctxfile = prepare_ctxfile(a);
+	std::string oldctx  = read_context(ctxfile);
+
+	// initialize the plugin
+	init_plugin(argc, argv, a, oldctx, prepare_authfile(a));
+
+	// initialize the yaml writer
+	return {std::move(ctxfile), std::move(oldctx)};
+}
+
 inline static void
 request(plugin* plug, bool verbose, std::function<void(std::string_view)> plug_update,
         std::function<void()> plug_finish) {
@@ -909,6 +968,8 @@ inline static struct ryml_error_handler {
 	}
 } ryml_error_handler;
 
+//[[nodiscard]] inline
+
 } // namespace llmq
 
 int
@@ -919,141 +980,42 @@ main(int argc, char** argv) {
 	// prevent any new plugins from being constructed
 	main_started = true;
 
+	// set rapidyaml to use exceptions
+	ryml::set_callbacks(ryml_error_handler.callbacks());
+
 	// read plugin, action, and context (and assert validity)
 	// note: list and help are handled by parse_llmq_args
 	auto a = parse_llmq_args(argc, argv);
 
 	// handle any action that does not require the plugin to be initialized
 	switch (a.action) {
-		case edit: {
-			fs::path f = prepare_ctxfile(a);
-			return (spawn_editor(f.parent_path().parent_path(), f), 0);
-		}
-		case auth: {
-			fs::path f = prepare_authfile(a);
-			return (spawn_editor(f.parent_path().parent_path(), f), 0);
-		}
-		case path: {
-			fs::path f = compute_ctxfile(a);
-			return (std::cout << f.c_str() << '\n', 0);
-		}
-		case del: {
-			fs::path f = compute_ctxfile(a);
-			if (fs::exists(f)) {
-				fs::remove(f);
-				if (fs::is_empty(f.parent_path())) // .../llmq/PLUGIN
-					fs::remove(f.parent_path());
-				if (fs::is_empty(f.parent_path().parent_path())) // .../llmq
-					fs::remove(f.parent_path().parent_path());
-			} else {
-				die("invalid context path ", f);
-			}
-			return 0;
-		}
-		case kill: {
-			fs::path f = compute_ctxfile(a);
-			return (kill_ctx(a.verbose, f), 0);
-		}
-		case list: {
-			return (print_plugins(), 0);
-		}
-		case help: {
-			return (std::cout << llmq::help << '\n', 0);
-		}
-		default: break;
-	}
-
-	// prepare the necessary files
-	fs::path ctxfile;
-	fs::path authfile;
-	switch (a.action) {
-		case query:
-			ctxfile  = prepare_ctxfile(a);
-			authfile = prepare_authfile(a);
-			break;
-		case chat:
-			ctxfile  = prepare_ctxfile(a);
-			authfile = prepare_authfile(a);
-			break;
-		case init:
-			if (a.context.empty())
-				a.context = compute_tmpctx(a);
-			ctxfile  = prepare_ctxfile(a);
-			authfile = prepare_authfile(a);
-			break;
-		default: die("logic error in argument parser");
-	}
-
-	// parse the context and initialize the plugin
-	std::string oldctx;
-	{
-
-		// read plugin args, if enabled
-		auto pargs =
-		    parse_plugin_args(argc, argv, a.ofs, a.plugin, a.no_stdin || a.action == init);
-
-		// set rapidyaml to use exceptions
-		ryml::set_callbacks(ryml_error_handler.callbacks());
-
-		// read the entire context file as YAML (if needed)
-		ryml::Tree ctx;
-		if (!a.context.empty()) {
-			FILE* f = open_file(ctxfile.c_str(), "r");
-			oldctx  = read_file(ctxfile, f);
-			try {
-				ctx = ryml::parse_in_arena(
-				    ryml::csubstr{oldctx.data(), oldctx.size()});
-			} catch (std::exception const& e) {
-				die("could not parse YAML context: ", e.what());
-			}
-			std::fclose(f);
-		}
-
-		{
-			// load authfile contents
-			std::string authstr;
-			{
-				FILE* f = open_file(authfile.c_str(), "r");
-				authstr = trim(read_file(authfile, f));
-				std::fclose(f);
-			}
-
+		case query: {
 			// initialize the plugin
-			plugop(a.plugin->name(), "initialize", [&a, &ctx, &pargs, &authstr] {
-				a.plugin->init(std::move(ctx), std::move(pargs),
-				               std::move(authstr));
-			});
-		}
-	}
+			init_plugin(argc, argv, a,
+			            a.context.empty() ? std::string{}
+			                              : read_context(prepare_ctxfile(a)),
+			            prepare_authfile(a));
 
-	// handle all plugin invocations
-	if (a.action == query) {
-		// make the request without saving context
-		request(
-		    a.plugin, a.verbose,
-		    [a](std::string_view reply) {
-			    // update plugin and print deltas
-			    plugop(a.plugin->name(), "process reply using", [&a, &reply] {
-				    a.plugin->onreply(reply, true);
+			// make the request without saving context
+			request(
+			    a.plugin, a.verbose,
+			    [a](std::string_view reply) {
+				    // update plugin and print deltas
+				    plugop(a.plugin->name(), "process reply using", [&a, &reply] {
+					    a.plugin->onreply(reply, true);
+				    });
+			    },
+			    [a] {
+				    // notify the plugin that the request has completed
+				    plugop(a.plugin->name(), "finalize", [&a] {
+					    a.plugin->onfinish(true);
+				    });
 			    });
-		    },
-		    [a] {
-			    // notify the plugin that the request has completed
-			    plugop(a.plugin->name(), "finalize", [&a] {
-				    a.plugin->onfinish(true);
-			    });
-		    });
-	} else {
-		// efficient yaml writer that manages locking
-		context_writer wctx{std::move(ctxfile),
-		                    std::move(oldctx)}; // warn: ctxfile and oldctx invalidated
+		} break;
 
-		if (a.action == init) {
-			wctx.overwrite(plugop(a.plugin->name(), "get context from", [&a] {
-				return a.plugin->context();
-			}));
-			std::cout << a.plugin->name() << "://" << a.context << '\n';
-		} else if (a.action == chat) {
+		case chat: {
+			context_writer wctx = init_plugctx(argc, argv, a);
+
 			// make the request; save context each reply
 			request(
 			    a.plugin, a.verbose,
@@ -1074,9 +1036,63 @@ main(int argc, char** argv) {
 					    a.plugin->onfinish(!a.quiet);
 				    });
 			    });
-		} else {
-			die("internal error in action handling logic");
+
+		} break;
+
+		case init: {
+			if (a.context.empty())
+				a.context = compute_tmpctx(a);
+			context_writer wctx = init_plugctx(argc, argv, a);
+
+			wctx.overwrite(plugop(a.plugin->name(), "get context from", [&a] {
+				return a.plugin->context();
+			}));
+			std::cout << a.plugin->name() << "://" << a.context << '\n';
+		} break;
+
+		case edit: {
+			fs::path f = prepare_ctxfile(a);
+			return (spawn_editor(f.parent_path().parent_path(), f), 0);
 		}
+
+		case auth: {
+			fs::path f = prepare_authfile(a);
+			return (spawn_editor(f.parent_path().parent_path(), f), 0);
+		}
+
+		case path: {
+			fs::path f = compute_ctxfile(a);
+			return (std::cout << f.c_str() << '\n', 0);
+		}
+
+		case del: {
+			fs::path f = compute_ctxfile(a);
+			if (fs::exists(f)) {
+				fs::remove(f);
+				if (fs::is_empty(f.parent_path())) // <dir>/llmq/PLUGIN
+					fs::remove(f.parent_path());
+				if (fs::is_empty(f.parent_path().parent_path())) // <dir>/llmq
+					fs::remove(f.parent_path().parent_path());
+			} else {
+				die("invalid context path ", f);
+			}
+			return 0;
+		}
+
+		case kill: {
+			fs::path f = compute_ctxfile(a);
+			return (kill_ctx(a.verbose, f), 0);
+		}
+
+		case list: {
+			return (print_plugins(), 0);
+		}
+
+		case help: {
+			return (std::cout << llmq::help << '\n', 0);
+		}
+
+		default: break;
 	}
 
 	return 0;
