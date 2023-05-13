@@ -1,0 +1,49 @@
+#!/bin/bash
+#  oooo  oooo
+#  `888  `888
+#   888   888  ooo. .oo.  .oo.    .ooooo oo
+#   888   888  `888P"Y88bP"Y88b  d88' `888
+#   888   888   888   888   888  888   888
+#  o888o o888o o888o o888o o888o `V8bod888
+#  ┌─────────────────────────────────┐ 888
+#  │ a query CLI and context manager │ 888.
+#  │ for LLM-powered shell pipelines │ 8P'
+#  └─────────────────────────────────┘ "
+#  Copyright (C) 2023 Justin Collier <m@jpcx.dev>
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU Affero General Public License as
+#    published by the Free Software Foundation, either version 3 of the
+#    License, or (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+SUMMARIZE="$(dirname $(readlink -f $0))/summarize"
+
+if [ ! -e "$SUMMARIZE" ]
+then
+	echo "error: summarize pipeline not found" >&2
+	exit 1;
+fi
+
+if [ ! -x "`command -v "curl"`" ]
+then
+	echo "error: summarize_webpage requires curl" >&2
+	exit 1;
+fi
+
+if [ ! -x "`command -v "html2text"`" ]
+then
+	echo "error: summarize_webpage requires html2text" >&2
+	exit 1;
+fi
+
+URL=${@:-`cat -`}
+
+curl "$URL" 2>/dev/null | html2text | $SUMMARIZE

@@ -1,0 +1,75 @@
+#!/bin/bash
+#  oooo  oooo
+#  `888  `888
+#   888   888  ooo. .oo.  .oo.    .ooooo oo
+#   888   888  `888P"Y88bP"Y88b  d88' `888
+#   888   888   888   888   888  888   888
+#  o888o o888o o888o o888o o888o `V8bod888
+#  ┌─────────────────────────────────┐ 888
+#  │ a query CLI and context manager │ 888.
+#  │ for LLM-powered shell pipelines │ 8P'
+#  └─────────────────────────────────┘ "
+#  Copyright (C) 2023 Justin Collier <m@jpcx.dev>
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU Affero General Public License as
+#    published by the Free Software Foundation, either version 3 of the
+#    License, or (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+N_MSGS=6
+
+PROFESSOR=`llmq i gpt -m gpt-4 -S true -T 1.0 -s "GPT-4, you will be acting as
+a professor in a conversation with another language model, who will be acting
+as a student. You will be provided with a topic, and your task will be to quiz
+the student about that topic. Make sure you encourage them to find the solution
+on their own, correct them when they make mistakes, and explore the topic in
+detail. Your student is extremely knowledgeable about a wide range of topics
+and does not need a beginner's introduction. The next message will be from your
+supervisor, who will describe the topic of today's lesson."`
+
+STUDENT=`llmq i gpt -m gpt-3.5-turbo -S true -T 1.0 -s "GPT-3.5, you will be
+acting as a student, with GPT-4 acting as the professor. The professor will
+quiz you regarding a topic, and your task is to answer their questions to the
+best of your ability. Always ask questions if you make a mistake."`
+
+cleanup() {
+	llmq d $PROFESSOR
+	llmq d $STUDENT
+}
+trap cleanup EXIT
+
+init() {
+	topic=`cat`
+	printf "[Professor] " >&2
+	llmq -i c $PROFESSOR -s "$topic" -s "$1 messages remain"
+	echo
+}
+
+ping() {
+	msg=`tee /dev/fd/2`
+	printf "[Professor] " >&2
+	echo "$msg" | llmq c $PROFESSOR -s "$1 messages remain"
+	echo
+}
+
+pong() {
+	msg=`tee /dev/fd/2`
+	printf "[Student] " >&2
+	echo "$msg" | llmq c $STUDENT -s "$1 messages remain"
+	echo
+}
+
+cmd="echo -n \"${@:-`cat`}\" | init $N_MSGS | pong $N_MSGS"
+for ((i=$((N_MSGS - 1)); i >= 0; --i))
+do
+	cmd+=" | ping $i | pong $i"
+done
+eval "$cmd"
