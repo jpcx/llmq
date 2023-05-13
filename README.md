@@ -313,13 +313,13 @@ make install # sudo or root
 In the `examples/` folder, you will find several examples of bash scripts that
 use llmq within bash pipelines.
 
-- cmd: generates and executes a bash command on the system based on user input. uses GPT-3.5 for interpreting and GPT-4 for generating.
-- codegen: generates a single function in a programming language. uses GPT-3.5 to produce 3 alternatives and GPT-4 to review the proposed solutions and produce the actual result.
-- introspection: allows GPT-3.5 to have a conversation with itself about anything.
-- scmd: same as cmd, but uses an additional GPT-3.5 layer and modified prompts to prevent the script from executing anything that would modify the system in any way.
-- selftest: given a lesson plan, GPT-4 acts as a professor and quizzes GPT-3.5 about the topic. These interactions are quite interesting.
-- summarize: iteratively splits the input into chunks, summarizes each with GPT-3.5, combines their summaries, and repeats until the output is enough for a final GPT-3.5 summary.
-- summarize\_webpage: calls summarize with the result of curl and html2text.
+- `cmd`: generates and executes a bash command on the system based on user input. uses GPT-3.5 for interpreting and GPT-4 for generating.
+- `codegen`: generates a single function in a programming language. uses GPT-3.5 to produce 3 alternatives and GPT-4 to review the proposed solutions and produce the actual result.
+- `introspection`: allows GPT-3.5 to have a conversation with itself about anything.
+- `scmd`: same as cmd, but uses an additional GPT-3.5 layer and modified prompts to prevent the script from executing anything that would modify the system in any way.
+- `selftest`: given a lesson plan, GPT-4 acts as a professor and quizzes GPT-3.5 about the topic. These interactions are quite interesting.
+- `summarize`: iteratively splits the input into chunks, summarizes each with GPT-3.5, combines their summaries, and repeats until the output is enough for a final GPT-3.5 summary.
+- `summarize_webpage`: calls summarize with the result of curl and html2text.
 
 ## <a name=demonstration>Demonstration</a>
 
