@@ -128,6 +128,9 @@ llmq path plug://ctx
 
 # /tmp/llmq/plug/~ctx.yml
 llmq path plug://~ctx
+
+# /home/user/.local/share/llmq/plug
+llmq path plug
 ```
 
 d | del

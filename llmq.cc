@@ -968,8 +968,6 @@ inline static struct ryml_error_handler {
 	}
 } ryml_error_handler;
 
-//[[nodiscard]] inline
-
 } // namespace llmq
 
 int
@@ -1061,8 +1059,10 @@ main(int argc, char** argv) {
 		}
 
 		case path: {
-			fs::path f = compute_ctxfile(a);
-			return (std::cout << f.c_str() << '\n', 0);
+			if (!a.context.empty())
+				return (std::cout << compute_ctxfile(a).c_str() << '\n', 0);
+			else
+				return (std::cout << compute_datadir(a).c_str() << '\n', 0);
 		}
 
 		case del: {
@@ -1089,7 +1089,11 @@ main(int argc, char** argv) {
 		}
 
 		case help: {
-			return (std::cout << llmq::help << '\n', 0);
+			if (a.plugin) {
+				return (std::cout << a.plugin->help() << '\n', 0);
+			} else {
+				return (std::cout << llmq::help << '\n', 0);
+			}
 		}
 
 		default: break;
