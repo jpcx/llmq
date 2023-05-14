@@ -333,9 +333,9 @@ A demonstration of the original motivation behind this tool (generic editor inte
 
 ![](./.assets/demo1.gif)
 
-A demonstration of the potential benefits of integrating LLMs into bash pipelines.
+A demonstration of the potential for complex interactions between LLMs and the system.
 
-- See `examples/cmd.sh` for the script used by this demo.
+- See `examples/cmd` for the script used by this demo.
 
 ![](./.assets/demo2.gif)
 
