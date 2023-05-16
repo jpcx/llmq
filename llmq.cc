@@ -825,7 +825,7 @@ onwrite(char* ptr, size_t size, size_t nmemb, void* plug_update_void) {
 template <class Op>
 	requires std::is_invocable_v<Op>
 inline static auto
-plugop(std::string_view plugname, std::string_view opdescr, Op&& op) noexcept {
+plugop(std::string_view plugname, std::string_view opdescr, Op&& op) {
 	try {
 		return op();
 	} catch (std::exception const& e) {
