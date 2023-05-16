@@ -270,7 +270,7 @@ plugin::plugin(std::source_location loc) noexcept {
 }
 
 inline static constexpr std::string_view help =
-    "usage: llmq [-hqiv] [ACTION] [PLUGIN][://[~]CONTEXT] [OPTIONS]... [--] [MSGS]...\n"
+    "usage: llmq [-hqivr] [ACTION] [PLUGIN][://[~]CONTEXT] [OPTIONS]... [--] [MSGS]...\n"
     "A query CLI and context manager for LLM-powered shell pipelines.\n"
     "\n"
     "llmq is essentially a wrapper for LLM API plugins that manages command-line\n"
@@ -293,6 +293,7 @@ inline static constexpr std::string_view help =
     "  -q --quiet     do not print reply to stdout (if chat).\n"
     "  -i --no-stdin  does not read from stdin, even if MSGS is missing (if q|c).\n"
     "  -v --verbose   print cURL and other llmq diagnostics to stderr.\n"
+    "  -r --retry     retry at most once if q|c failed (retains context).\n"
     "\n"
     "ACTION:\n"
     "  q query  queries and streams response without modifying the context.\n"
@@ -481,6 +482,7 @@ struct llmq_args_result {
 	bool           quiet;
 	bool           verbose;
 	bool           no_stdin;
+	bool           retry;
 	enum action    action;
 	unsigned       ofs; // offset for argc after parsing
 	struct plugin* plugin;
@@ -494,6 +496,7 @@ parse_llmq_args(int argc, char** argv) {
 	    .quiet    = false,
 	    .verbose  = false,
 	    .no_stdin = false,
+	    .retry    = false,
 	    .action   = action::unset,
 	    .ofs      = 1,
 	    .plugin   = nullptr,
@@ -516,6 +519,8 @@ parse_llmq_args(int argc, char** argv) {
 				res.no_stdin = true;
 			if (hasopt(argv[res.ofs], 'v', "--verbose"))
 				res.verbose = true;
+			if (hasopt(argv[res.ofs], 'r', "--retry"))
+				res.retry = true;
 			continue;
 		}
 
@@ -809,10 +814,11 @@ trim(std::string_view s) noexcept {
 inline static size_t
 onwrite(char* ptr, size_t size, size_t nmemb, void* plug_update_void) {
 	auto plug_update =
-	    reinterpret_cast<std::function<void(std::string_view)>*>(plug_update_void);
+	    reinterpret_cast<std::function<bool(std::string_view)>*>(plug_update_void);
 	size_t len = size * nmemb;
-	(*plug_update)(std::string_view(ptr, len));
-	return len;
+	if ((*plug_update)(std::string_view(ptr, len)))
+		return len;
+	return 0;
 }
 
 // a wrapper for throwable plugin operations
@@ -823,11 +829,14 @@ plugop(std::string_view plugname, std::string_view opdescr, Op&& op) noexcept {
 	try {
 		return op();
 	} catch (std::exception const& e) {
-		die("failed to ", opdescr, " plugin \"", plugname, "\": ", e.what());
+		throw std::runtime_error{"failed to " + std::string{opdescr} + " plugin \"" +
+		                         std::string{plugname} + "\": " + e.what()};
 	} catch (char const* e) {
-		die("failed to ", opdescr, " plugin \"", plugname, "\": ", e);
+		throw std::runtime_error{"failed to " + std::string{opdescr} + " plugin \"" +
+		                         std::string{plugname} + "\": " + e};
 	} catch (...) {
-		die("failed to ", opdescr, " plugin \"", plugname, "\": unknown error");
+		throw std::runtime_error{"failed to " + std::string{opdescr} + " plugin \"" +
+		                         std::string{plugname} + "\": unknown error"};
 	}
 }
 
@@ -873,9 +882,13 @@ init_plugin(int argc, char** argv, llmq_args_result& a, std::string const& oldct
 	// load authfile contents
 	std::string auth = read_auth(authfile);
 
-	plugop(a.plugin->name(), "initialize", [&a, &ctx, &args, &auth] {
-		a.plugin->init(std::move(ctx), std::move(args), std::move(auth));
-	});
+	try {
+		plugop(a.plugin->name(), "initialize", [&a, &ctx, &args, &auth] {
+			a.plugin->init(std::move(ctx), std::move(args), std::move(auth));
+		});
+	} catch (std::exception const& e) {
+		die(e.what());
+	}
 }
 
 [[nodiscard]] inline static context_writer
@@ -890,9 +903,8 @@ init_plugctx(int argc, char** argv, llmq_args_result& a) noexcept {
 	return {std::move(ctxfile), std::move(oldctx)};
 }
 
-inline static void
-request(plugin* plug, bool verbose, std::function<void(std::string_view)> plug_update,
-        std::function<void()> plug_finish) {
+[[nodiscard]] inline static bool
+request(plugin* plug, bool verbose, std::function<bool(std::string_view)> plug_update) {
 	auto init = ::curl_global_init(CURL_GLOBAL_DEFAULT);
 	if (init != CURLE_OK)
 		die("cURL error: ", ::curl_easy_strerror(init));
@@ -900,19 +912,25 @@ request(plugin* plug, bool verbose, std::function<void(std::string_view)> plug_u
 	std::string        prompt;
 	struct curl_slist* headers = NULL;
 
-	auto url = plugop(plug->name(), "get url from", [plug] {
-		return plug->url();
-	});
-
-	plugop(plug->name(), "append headers from", [plug, &headers] {
-		plug->append_headers([&headers](std::string_view h) {
-			headers = ::curl_slist_append(headers, h.data());
+	std::string_view                url;
+	std::optional<std::string_view> post;
+	try {
+		url = plugop(plug->name(), "get url from", [plug] {
+			return plug->url();
 		});
-	});
 
-	auto post = plugop(plug->name(), "get postdata from", [plug] {
-		return plug->post();
-	});
+		plugop(plug->name(), "append headers from", [plug, &headers] {
+			plug->append_headers([&headers](std::string_view h) {
+				headers = ::curl_slist_append(headers, h.data());
+			});
+		});
+
+		post = plugop(plug->name(), "get postdata from", [plug] {
+			return plug->post();
+		});
+	} catch (std::exception const& e) {
+		die(e.what());
+	}
 
 	curl = ::curl_easy_init();
 	if (!curl)
@@ -935,10 +953,14 @@ request(plugin* plug, bool verbose, std::function<void(std::string_view)> plug_u
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, post->size());
 	}
 
+	bool res = true;
+
 	// send the request
 	{
 		CURLcode _ = ::curl_easy_perform(curl);
-		if (_ != CURLE_OK)
+		if (_ == CURLE_WRITE_ERROR)
+			res = false;
+		else if (_ != CURLE_OK)
 			die("cURL error: ", ::curl_easy_strerror(_));
 	}
 
@@ -946,7 +968,7 @@ request(plugin* plug, bool verbose, std::function<void(std::string_view)> plug_u
 	::curl_slist_free_all(headers);
 	::curl_global_cleanup();
 
-	plug_finish();
+	return res;
 }
 
 inline static struct ryml_error_handler {
@@ -994,47 +1016,82 @@ main(int argc, char** argv) {
 			                              : read_context(prepare_ctxfile(a)),
 			            prepare_authfile(a));
 
+			bool retry = a.retry;
+
 			// make the request without saving context
-			request(
-			    a.plugin, a.verbose,
-			    [a](std::string_view reply) {
-				    // update plugin and print deltas
-				    plugop(a.plugin->name(), "process reply using", [&a, &reply] {
-					    a.plugin->onreply(reply, true);
-				    });
-			    },
-			    [a] {
-				    // notify the plugin that the request has completed
-				    plugop(a.plugin->name(), "finalize", [&a] {
-					    a.plugin->onfinish(true);
-				    });
-			    });
+			while (!request(a.plugin, a.verbose, [&a, &retry](std::string_view reply) {
+				try {
+					// update plugin and print deltas
+					plugop(a.plugin->name(), "process reply using",
+					       [&a, &reply] {
+						       a.plugin->onreply(reply, true);
+					       });
+					return true;
+				} catch (std::exception const& e) {
+					if (retry) {
+						retry = false;
+						return false;
+					} else {
+						die(e.what());
+					}
+				}
+			}))
+				;
+
+			try {
+				// notify the plugin that the request has completed
+				plugop(a.plugin->name(), "finalize", [&a] {
+					a.plugin->onfinish(true);
+				});
+			} catch (std::exception const& e) {
+				die(e.what());
+			}
 		} break;
 
 		case chat: {
 			context_writer wctx = init_plugctx(argc, argv, a);
 
+			bool retry = a.retry;
+
 			// make the request; save context each reply
-			request(
-			    a.plugin, a.verbose,
-			    [a, &wctx](std::string_view reply) {
-				    // update plugin and print deltas
-				    plugop(a.plugin->name(), "process reply using", [&a, &reply] {
-					    a.plugin->onreply(reply, !a.quiet);
-				    });
+			while (!request(
+			    a.plugin, a.verbose, [&a, &wctx, &retry](std::string_view reply) {
+				    try {
+					    // update plugin and print deltas
+					    plugop(a.plugin->name(), "process reply using",
+					           [&a, &reply] {
+							   a.plugin->onreply(reply, !a.quiet);
+						   });
+				    } catch (std::exception const& e) {
+					    if (retry) {
+						    retry = false;
+						    return false;
+					    } else {
+						    die(e.what());
+					    }
+				    }
 
-				    wctx.overwrite(
-					plugop(a.plugin->name(), "get context from", [&a] {
-						return a.plugin->context();
-					}));
-			    },
-			    [a] {
-				    // notify the plugin that the request has completed
-				    plugop(a.plugin->name(), "finalize", [&a] {
-					    a.plugin->onfinish(!a.quiet);
-				    });
-			    });
+				    try {
+					    wctx.overwrite(
+						plugop(a.plugin->name(), "get context from", [&a] {
+							return a.plugin->context();
+						}));
+				    } catch (std::exception const& e) {
+					    die(e.what());
+				    }
 
+				    return true;
+			    }))
+				;
+
+			try {
+				// notify the plugin that the request has completed
+				plugop(a.plugin->name(), "finalize", [&a] {
+					a.plugin->onfinish(!a.quiet);
+				});
+			} catch (std::exception const& e) {
+				die(e.what());
+			}
 		} break;
 
 		case init: {
@@ -1042,9 +1099,13 @@ main(int argc, char** argv) {
 				a.context = compute_tmpctx(a);
 			context_writer wctx = init_plugctx(argc, argv, a);
 
-			wctx.overwrite(plugop(a.plugin->name(), "get context from", [&a] {
-				return a.plugin->context();
-			}));
+			try {
+				wctx.overwrite(plugop(a.plugin->name(), "get context from", [&a] {
+					return a.plugin->context();
+				}));
+			} catch (std::exception const& e) {
+				die(e.what());
+			}
 			std::cout << a.plugin->name() << "://" << a.context << '\n';
 		} break;
 

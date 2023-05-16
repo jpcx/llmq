@@ -6,7 +6,7 @@ llmq \- a query CLI and context manager for LLM-powered shell pipelines.
 
 .SH SYNOPSIS
 .B llmq
-[\fB\-hqiv\fR]
+[\fB\-hqivr\fR]
 [\fIACTION\fR]
 [\fIPLUGIN\fR][://[\fB~\fR]\fICONTEXT\fR]
 [\fIOPTIONS\fR]...
@@ -43,6 +43,9 @@ does not read from stdin, even if MSGS is missing (query/chat).
 .TP
 .B \-v, \-\-verbose
 print cURL and other llmq diagnostics to stderr.
+.TP
+.B \-r, \-\-retry
+retry at most once if a query/chat failed (retains context).
 
 .TP
 note: any flags after PLUGIN are considered OPTIONS

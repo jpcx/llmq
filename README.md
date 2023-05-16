@@ -25,7 +25,7 @@ o888o o888o o888o o888o o888o `V8bod888
 
 ### Usage
 
-#### `llmq [-hqiv] [ACTION] [PLUGIN][://[~]CONTEXT] [OPTIONS]... [--] [MSGS]...`
+#### `llmq [-hqivr] [ACTION] [PLUGIN][://[~]CONTEXT] [OPTIONS]... [--] [MSGS]...`
 
 ### Description
 
@@ -64,6 +64,9 @@ Files and directories are automatically created/populated if they do not exist.
 
 **-v, --verbose**  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;print cURL and other llmq diagnostics to stderr.
+
+**-r, --retry**  
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;retry at most once if a query/chat failed (retains context).
 
 note: any flags after PLUGIN are considered plugin OPTIONS
 
