@@ -24,7 +24,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-N_MSGS=6
+N_MSGS=7
 
 PROFESSOR=`llmq i gpt -m gpt-4 -S true -T 1.0 -s "GPT-4, you will be acting as
 a professor in a conversation with another language model, who will be acting
@@ -68,7 +68,7 @@ pong() {
 }
 
 cmd="echo -n \"${@:-`cat`}\" | init $N_MSGS | pong $N_MSGS"
-for ((i=$((N_MSGS - 1)); i >= 0; --i))
+for ((i=$((N_MSGS - 1)); i > 0; --i))
 do
 	cmd+=" | ping $i | pong $i"
 done

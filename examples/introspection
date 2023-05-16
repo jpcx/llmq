@@ -24,7 +24,7 @@
 #  You should have received a copy of the GNU Affero General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-N_MSGS=6
+N_MSGS=7
 
 SYS="GPT-3.5, you are integrated into a pipeline that will allow you to have a
 conversation with another large language model. If you send a message, it will
@@ -58,7 +58,7 @@ pong() {
 }
 
 cmd='printf ""'
-for ((i=$N_MSGS; i >= 0; --i))
+for ((i=$N_MSGS; i > 0; --i))
 do
 	cmd+=" | ping $i | pong $i"
 done
