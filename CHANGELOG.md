@@ -1,3 +1,9 @@
+# [0.2.1](https://github.com/jpcx/llmq/tree/0.2.1) 2023-05-18
+
+## Fixed
+
+- Fixed typo in README
+
 # [0.2.0](https://github.com/jpcx/llmq/tree/0.2.0) 2023-05-17
 
 ## Fixed
