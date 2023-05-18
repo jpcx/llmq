@@ -333,7 +333,7 @@ A demonstration of the original motivation behind this tool (generic editor inte
 
 ![](./.assets/demo1.gif)
 
-An illustration the potential for complex interactions between LLMs and the system.
+An illustration of the potential for complex interactions between LLMs and the system.
 
 - See `examples/cmd`
 
