@@ -317,7 +317,7 @@ use llmq within bash pipelines.
 - `codegen`: generates a single function in a programming language. uses GPT-3.5 to produce 3 alternatives and GPT-4 to review the proposed solutions and produce the actual result.
 - `introspection`: allows GPT-3.5 to have a conversation with itself about anything.
 - `scmd`: same as cmd, but uses an additional GPT-3.5 layer and modified prompts to prevent the script from executing anything that would modify the system in any way.
-- `selftest`: given a lesson plan, GPT-4 acts as a professor and quizzes GPT-3.5 about the topic. These interactions are quite interesting.
+- `selftest`: given a lesson plan, GPT-4 acts as a professor and quizzes GPT-3.5 about the topic.
 - `summarize`: iteratively splits the input into chunks, summarizes each with GPT-3.5, combines their summaries, and repeats until the output is enough for a final GPT-3.5 summary.
 - `summarize_webpage`: calls summarize with the result of curl and html2text.
 
@@ -333,11 +333,23 @@ A demonstration of the original motivation behind this tool (generic editor inte
 
 ![](./.assets/demo1.gif)
 
-A demonstration of the potential for complex interactions between LLMs and the system.
+An illustration the potential for complex interactions between LLMs and the system.
 
-- See `examples/cmd` for the script used by this demo.
+- See `examples/cmd`
 
 ![](./.assets/demo2.gif)
+
+An interesting dialogue between two LLMs.
+
+- See `examples/selftest`
+
+![](./.assets/demo3.gif)
+
+A simple implementation of web summaries using GPT-3.5.
+
+- See `examples/summarize_webpage`
+
+![](./.assets/demo4.gif)
 
 ## <a name=contributing>Contributing</a>
 
