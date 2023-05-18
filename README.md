@@ -5,9 +5,10 @@ oooo  oooo
  888   888  `888P"Y88bP"Y88b  d88' `888
  888   888   888   888   888  888   888
 o888o o888o o888o o888o o888o `V8bod888
-                                    888.
-a query CLI, plugin framework, and  8P'
-I/O manager for conversational AIs  "
+┌─────────────────────────────────┐ 888
+│ a query CLI and context manager │ 888.
+│ for LLM-powered shell pipelines │ 8P'
+└─────────────────────────────────┘ "
 ```
 
 ### Contents
@@ -15,6 +16,7 @@ I/O manager for conversational AIs  "
 - [Synopsis](#synopsis)
 - [Plugins](#plugins)
 - [Installation](#installation)
+- [Examples](#examples)
 - [Demonstration](#demonstration)
 - [Contributing](#contributing)
 - [AGPL Notice](#agpl_notice)
@@ -23,11 +25,11 @@ I/O manager for conversational AIs  "
 
 ### Usage
 
-#### `llmq [-hqiv] [ACTION] [PLUGIN][://CONTEXT] [OPTIONS]... [MSGS]...`
+#### `llmq [-hqiv] [ACTION] [PLUGIN][://[~]CONTEXT] [OPTIONS]... [--] [MSGS]...`
 
 ### Description
 
-The `llmq` executable is a terminal-friendly wrapper for conversational AIs that:
+The `llmq` executable is a terminal-friendly wrapper for large language models that:
 
 - Reads command-line arguments and/or input from stdin
 - Handles file I/O efficiently by writing deltas
@@ -44,6 +46,8 @@ See the [plugins](#plugins) section for guidelines.
   - stores authfile and any other plugin-specific configuration files
 - `$XDG_DATA_HOME/llmq/PLUGIN` (or `~/.local/share/llmq/PLUGIN`)
   - stores conversation context as `*.yml` files
+- `/tmp/llmq/PLUGIN`
+  - stores temporary context files (specified by a ~ prefix; see CONTEXT)
 
 Files and directories are automatically created/populated if they do not exist.
 
@@ -61,6 +65,8 @@ Files and directories are automatically created/populated if they do not exist.
 **-v, --verbose**  
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;print cURL and other llmq diagnostics to stderr.
 
+note: any flags after PLUGIN are considered plugin OPTIONS
+
 ### ACTION
 
 q | query
@@ -69,7 +75,10 @@ q | query
 llmq query plug://ctx "hello"
 
 # listens for stdin if no MSGS supplied
-echo "hi!" | llmq q plug://ctx
+echo "hey!" | llmq q plug://ctx
+
+# a query may omit context if the plugin supports it
+echo "listen!" | llmq q plug
 ```
 
 c | chat
@@ -81,40 +90,57 @@ llmq chat plug://ctx "hello"
 echo "hi!" | llmq c plug://ctx
 
 # ignores stdin; assumes context was edited externally
+# note: see the demonstration section for an example
 llmq -i c plug://ctx
 ```
 
 i | init
 ```
-# initialize the context file (plugin-dependent)
+# initialize a context file in the data dir
 llmq init plug://ctx -m modelname
+
+# creates a named temporary context file in the temp dir
+llmq init plug://~foo -m modelname
+
+# creates a temporary, unique context file in the temp dir
+tmpctx=`llmq init plug -m modelname`
+
+# references the temporary context
+# note: tmpctx begins with "plug://~"
+llmq q $tmpctx "hello"
 ```
 
 e | edit
 ```
-# opens context file for editing
+# opens a context file for editing
 llmq edit plug://ctx
 ```
 
 a | auth
 ```
-# opens authfile for editing (600 perms by default, warns otherwise)
+# opens the authfile for editing (600 perms by default, warns otherwise)
 llmq auth plug
 ```
 
 p | path
 ```
-# /home/user/.local/share/llmq/plug
-llmq path plug
-
 # /home/user/.local/share/llmq/plug/ctx.yml
 llmq path plug://ctx
+
+# /tmp/llmq/plug/~ctx.yml
+llmq path plug://~ctx
+
+# /home/user/.local/share/llmq/plug
+llmq path plug
 ```
 
-r | rm
+d | del
 ```
-# removes a context
-llmq rm plug://ctx
+# deletes a context file
+llmq del plug://ctx
+
+# deletes a temporary context file
+llmq del plug://~ctx
 ```
 
 k | kill
@@ -144,8 +170,8 @@ llmq help plug
 **notes:**
 
 - ACTION always required, except when using `-h`
-- CONTEXT required for `q|c|i|e|r|k`
-- OPTIONS/MSGS/stdin ignored for `e|a|p|r|k|l|h`
+- CONTEXT required for `c|e|d|k`
+- OPTIONS/MSGS/stdin ignored for `e|a|p|d|k|l|h`
 - stdin ignored for `i`
 
 ### PLUGIN
@@ -156,10 +182,13 @@ The name of the target plugin.
 
 A YAML-encoded query/chat context file (e.g. model parameters, messages).
 CONTEXT omits the ".yml" suffix present on all context files.
+If CONTEXT begins with '~', it is stored in the temp directory.
 
 ### OPTIONS
 
 Named arguments or flags to pass to the plugin.
+
+"--" may be used to indicate the end of OPTIONS and the start of MSGS.
 
 ### MSGS
 
@@ -195,6 +224,11 @@ struct plugin {
 	// (or ~/.local/share/llmq/PLUGIN if XDG_DATA_HOME is not found).
 	// the datadir will be created if not found.
 	[[nodiscard]] virtual std::filesystem::path datadir() const noexcept;
+
+	// path to the temporary plugin context storage. called before init.
+	// if not overridden (or empty), uses /tmp/llmq/PLUGIN.
+	// the tmpdir will be created if not found.
+	[[nodiscard]] virtual std::filesystem::path tmpdir() const noexcept;
 
 	// getopt shortopts. empty string_view disables shortopts. called before init.
 	[[nodiscard]] virtual std::string_view shortopts() const noexcept;
@@ -236,8 +270,11 @@ struct plugin {
 	[[nodiscard]] virtual std::optional<std::string_view> post() const;
 
 	// integrate a reply into the context.
-	// onreply should print content if print is true (and if applicable).
+	// onreply should print content if print is true (if applicable).
 	virtual void onreply(std::string_view reply, bool print) = 0;
+
+	// called when the response has completed. prints a newline by default (if print).
+	virtual void onfinish(bool print);
 };
 ```
 
@@ -246,7 +283,7 @@ See `plugins/gpt.{h,cc}` for an example.
 - `make` compiles all plugins into an executable.
 - `*.mk` files in the `plugins/` directory may add targets and modify variables, e.g.:
 ```
-%/plugins/myplug.o: CXXFLAGS += $(shell pkg-config --cflags somepkg)
+.o/plugins/myplug.o: CXXFLAGS += $(shell pkg-config --cflags somepkg)
 LDFLAGS += $(shell pkg-config --libs somepkg)
 ```
 
@@ -271,6 +308,19 @@ make
 make install # sudo or root
 ```
 
+## <a name=examples>Examples</a>
+
+In the `examples/` folder, you will find several examples of bash scripts that
+use llmq within bash pipelines.
+
+- `cmd`: generates and executes a bash command on the system based on user input. uses GPT-3.5 for interpreting and GPT-4 for generating.
+- `codegen`: generates a single function in a programming language. uses GPT-3.5 to produce 3 alternatives and GPT-4 to review the proposed solutions and produce the actual result.
+- `introspection`: allows GPT-3.5 to have a conversation with itself about anything.
+- `scmd`: same as cmd, but uses an additional GPT-3.5 layer and modified prompts to prevent the script from executing anything that would modify the system in any way.
+- `selftest`: given a lesson plan, GPT-4 acts as a professor and quizzes GPT-3.5 about the topic.
+- `summarize`: iteratively splits the input into chunks, summarizes each with GPT-3.5, combines their summaries, and repeats until the output is enough for a final GPT-3.5 summary.
+- `summarize_webpage`: calls summarize with the result of curl and html2text.
+
 ## <a name=demonstration>Demonstration</a>
 
 A demonstration of the original motivation behind this tool (generic editor integration).
@@ -281,7 +331,25 @@ A demonstration of the original motivation behind this tool (generic editor inte
 - `:sil! !llmq -iq c gpt://demo &` starts the request and (quietly) updates the context.
 - `:sil! !llmq k gpt://demo` kills the process.
 
-![](./.assets/demo.gif)
+![](./.assets/demo1.gif)
+
+An illustration the potential for complex interactions between LLMs and the system.
+
+- See `examples/cmd`
+
+![](./.assets/demo2.gif)
+
+An interesting dialogue between two LLMs.
+
+- See `examples/selftest`
+
+![](./.assets/demo3.gif)
+
+A simple implementation of web summaries using GPT-3.5.
+
+- See `examples/summarize_webpage`
+
+![](./.assets/demo4.gif)
 
 ## <a name=contributing>Contributing</a>
 

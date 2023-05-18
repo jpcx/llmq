@@ -1,14 +1,13 @@
-//
 //  oooo  oooo
 //  `888  `888
 //   888   888  ooo. .oo.  .oo.    .ooooo oo
 //   888   888  `888P"Y88bP"Y88b  d88' `888
 //   888   888   888   888   888  888   888
 //  o888o o888o o888o o888o o888o `V8bod888
-//                                      888.
-//  a query CLI, plugin framework, and  8P'
-//  I/O manager for conversational AIs  "
-//
+//  ┌─────────────────────────────────┐ 888
+//  │ a query CLI and context manager │ 888.
+//  │ for LLM-powered shell pipelines │ 8P'
+//  └─────────────────────────────────┘ "
 //  Copyright (C) 2023 Justin Collier <m@jpcx.dev>
 //
 //    This program is free software: you can redistribute it and/or modify
@@ -160,7 +159,7 @@ gpt::init(ryml::Tree ctx_, std::span<arg const> args, std::string auth) {
 		if (n == 'h')
 			exit((std::cout << help() << '\n', 0));
 
-		if (v.empty())
+		if (n != 0 && v.empty())
 			throw std::runtime_error{"invalid flag: " + (std::isalpha(n)
 			                                                 ? std::string{1, (char)n}
 			                                                 : std::to_string(n))};
@@ -292,6 +291,17 @@ gpt::onreply(std::string_view reply, bool print) {
 	ryml::Tree    reply_tree = ryml::parse_in_place(ryml::substr{json.data(), json.size()});
 	ryml::NodeRef root       = reply_tree.rootref();
 
+	bool actually_print;
+	if (print) {
+		if (ctx.rootref()["n"].has_val()) {
+			unsigned n;
+			ctx.rootref()["n"] >> n;
+			actually_print = n == 1;
+		} else
+			actually_print = true;
+	} else
+		actually_print = false;
+
 	auto choices = root["choices"];
 	if (!choices.is_seed() && choices.is_seq() && !choices.empty()) {
 		for (std::size_t i = 0; i < choices.num_children(); ++i) {
@@ -336,7 +346,7 @@ gpt::onreply(std::string_view reply, bool print) {
 					                         std::string{json});
 			}
 
-			if (print && idx == 0) // always log content from index 0
+			if (actually_print)
 				std::cout << content << std::flush;
 
 			if (impl::replies[idx]["role"] != "" &&
@@ -353,6 +363,52 @@ gpt::onreply(std::string_view reply, bool print) {
 	} else {
 		throw std::runtime_error("invalid response: " + std::string{json});
 	}
+}
+
+void
+gpt::onfinish(bool print) {
+	if (!print)
+		return;
+
+	unsigned n;
+	auto     root = ctx.rootref();
+
+	if (!root["n"].has_val()) {
+		std::cout << '\n';
+		return;
+	}
+
+	root["n"] >> n;
+
+	if (n == 1) {
+		std::cout << '\n';
+		return;
+	}
+
+	ryml::Tree    msgs_data;
+	ryml::NodeRef msgs = msgs_data.rootref();
+	msgs |= ryml::SEQ;
+	auto len = root["messages"].num_children();
+	if (root["messages"].is_seed() || len < n)
+		throw std::runtime_error{"invalid response: expected at least " +
+		                         std::to_string(n) + " messages"};
+	for (std::size_t i = 0; i < n; ++i) {
+		auto node = msgs.append_child();
+		auto m    = root["messages"][(len - n) + i];
+		if (m.is_seed() || m["role"].is_seed() || m["content"].is_seed())
+			throw std::runtime_error{"invalid response: expected messages to have "
+			                         "\"role\" and \"content\" "};
+		std::string role;
+		m["role"] >> role;
+		if (role != "assistant")
+			throw std::runtime_error{
+			    "invalid role: expected \"assistant\", received \"" + role + "\""};
+		std::string content;
+		m["content"] >> content;
+		node << content;
+	}
+
+	std::cout << ryml::emitrs_json<std::string>(msgs_data) << '\n';
 }
 
 ryml::NodeRef

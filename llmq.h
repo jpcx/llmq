@@ -1,16 +1,15 @@
 #ifndef LLMQ_H_INCLUDED
 #define LLMQ_H_INCLUDED
-//
 //  oooo  oooo
 //  `888  `888
 //   888   888  ooo. .oo.  .oo.    .ooooo oo
 //   888   888  `888P"Y88bP"Y88b  d88' `888
 //   888   888   888   888   888  888   888
 //  o888o o888o o888o o888o o888o `V8bod888
-//                                      888.
-//  a query CLI, plugin framework, and  8P'
-//  I/O manager for conversational AIs  "
-//
+//  ┌─────────────────────────────────┐ 888
+//  │ a query CLI and context manager │ 888.
+//  │ for LLM-powered shell pipelines │ 8P'
+//  └─────────────────────────────────┘ "
 //  Copyright (C) 2023 Justin Collier <m@jpcx.dev>
 //
 //    This program is free software: you can redistribute it and/or modify
@@ -64,6 +63,11 @@ struct plugin {
 	// the datadir will be created if not found.
 	[[nodiscard]] virtual std::filesystem::path datadir() const noexcept;
 
+	// path to the temporary plugin context storage. called before init.
+	// if not overridden (or empty), uses /tmp/llmq/PLUGIN.
+	// the tmpdir will be created if not found.
+	[[nodiscard]] virtual std::filesystem::path tmpdir() const noexcept;
+
 	// getopt shortopts. empty string_view disables shortopts. called before init.
 	[[nodiscard]] virtual std::string_view shortopts() const noexcept;
 
@@ -104,8 +108,11 @@ struct plugin {
 	[[nodiscard]] virtual std::optional<std::string_view> post() const;
 
 	// integrate a reply into the context.
-	// onreply should print content if print is true (and if applicable).
+	// onreply should print content if print is true (if applicable).
 	virtual void onreply(std::string_view reply, bool print) = 0;
+
+	// called when the response has completed. prints a newline by default (if print).
+	virtual void onfinish(bool print);
 };
 
 } // namespace llmq

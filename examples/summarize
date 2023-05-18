@@ -1,0 +1,83 @@
+#!/bin/bash
+#  oooo  oooo
+#  `888  `888
+#   888   888  ooo. .oo.  .oo.    .ooooo oo
+#   888   888  `888P"Y88bP"Y88b  d88' `888
+#   888   888   888   888   888  888   888
+#  o888o o888o o888o o888o o888o `V8bod888
+#  ┌─────────────────────────────────┐ 888
+#  │ a query CLI and context manager │ 888.
+#  │ for LLM-powered shell pipelines │ 8P'
+#  └─────────────────────────────────┘ "
+#  Copyright (C) 2023 Justin Collier <m@jpcx.dev>
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU Affero General Public License as
+#    published by the Free Software Foundation, either version 3 of the
+#    License, or (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+IN_CHARS=3072
+OUT_TOKENS=1024
+
+SYS="Please provide a detailed summary of your input, using bullets, with
+the most important information listed first. The user wants to retain as much
+information as possible. Remember, it is crucial that bullets are listed in
+order of most to least important."
+
+DIR=$(mktemp -d)
+
+QUERY="llmq q gpt -m gpt-3.5-turbo -t $OUT_TOKENS -T 1.0 -S true -s \"$SYS\""
+
+input=`cat -`
+children=()
+
+clean() {
+	{
+		kill -9 ${children[@]}
+		rm -rf $DIR
+	} >/dev/null 2>&1
+}
+trap clean EXIT
+
+while [ ${#input} -gt $IN_CHARS ]
+do
+	echo "[distilling...]"
+
+	chunk_n=0
+	for ((  i = 0; i < ${#input}; i += IN_CHARS / 2 ))
+	do
+		{
+			sleep $((chunk_n * 2))
+			echo "${input:i:IN_CHARS}" |
+				eval $QUERY > "${DIR}/${chunk_n}"
+		} &
+		children+=("$!")
+		((++chunk_n))
+	done
+	
+	wait
+	
+	children=()
+	
+	input=""
+	for ((  i = 0; i < chunk_n - 1; ++i ))
+	do
+		input+="`cat "${DIR}/${i}"`"
+	done
+	
+	rm -rf $DIR/*
+done
+
+printf "\n[distillation]\n"
+echo "$input"
+
+printf "\n[summary]\n"
+echo "$input" | eval $QUERY -S true

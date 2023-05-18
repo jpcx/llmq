@@ -1,0 +1,59 @@
+#!/bin/bash
+#  oooo  oooo
+#  `888  `888
+#   888   888  ooo. .oo.  .oo.    .ooooo oo
+#   888   888  `888P"Y88bP"Y88b  d88' `888
+#   888   888   888   888   888  888   888
+#  o888o o888o o888o o888o o888o `V8bod888
+#  ┌─────────────────────────────────┐ 888
+#  │ a query CLI and context manager │ 888.
+#  │ for LLM-powered shell pipelines │ 8P'
+#  └─────────────────────────────────┘ "
+#  Copyright (C) 2023 Justin Collier <m@jpcx.dev>
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU Affero General Public License as
+#    published by the Free Software Foundation, either version 3 of the
+#    License, or (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+N=3
+
+GEN="GPT-3, you are the first stage of a code generation pipeline. Your task is
+to write exactly one function in the specified language and leave a comment
+describing what it does, complete with parameter and return value
+documentation. Only write the function, and nothing else. Assume the user has
+all of the necessary libraries and include statements. Always generate the full
+function implementation."
+
+REVIEW="GPT-4, you are the final stage of a code generation pipeline. You will
+receive the output from the first stage, which produces $N possible results.
+You will use this information to output exactly one function that performs the
+desired goal. Ensure that the function has a comment that describes its
+parameters and return values. Do not use any Markdown, at all. Your output will
+be pasted directly into a code file and must be pure code."
+
+gen() {
+	msg=`cat`
+	printf "[generating...]\n" >&2
+	echo -n "$msg" |
+		llmq q gpt -m gpt-3.5-turbo -S true -T 1.0 -n $N -s "$GEN"
+	echo
+}
+
+review() {
+	msg=`tee /dev/fd/2`
+	printf "[reviewing...]\n" >&2
+	echo -n "$msg" |
+		llmq q gpt -m gpt-4 -S true -T 0.0 -s "$REVIEW"
+	echo
+}
+
+echo -n "${@:-`cat`}" | gen | review

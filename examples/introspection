@@ -1,0 +1,65 @@
+#!/bin/bash
+#  oooo  oooo
+#  `888  `888
+#   888   888  ooo. .oo.  .oo.    .ooooo oo
+#   888   888  `888P"Y88bP"Y88b  d88' `888
+#   888   888   888   888   888  888   888
+#  o888o o888o o888o o888o o888o `V8bod888
+#  ┌─────────────────────────────────┐ 888
+#  │ a query CLI and context manager │ 888.
+#  │ for LLM-powered shell pipelines │ 8P'
+#  └─────────────────────────────────┘ "
+#  Copyright (C) 2023 Justin Collier <m@jpcx.dev>
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU Affero General Public License as
+#    published by the Free Software Foundation, either version 3 of the
+#    License, or (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU Affero General Public License for more details.
+#
+#  You should have received a copy of the GNU Affero General Public License
+#  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+N_MSGS=7
+
+SYS="GPT-3.5, you are integrated into a pipeline that will allow you to have a
+conversation with another large language model. If you send a message, it will
+be relayed directly to the other model. You can exchange a total of $N_MSGS
+messages, and a countdown will be provided by the system. Ignore these system
+messages (do not repeat them), but keep the count in mind. Feel free to talk
+about anything. Both of you have received this message."
+
+PARAMS="gpt -m gpt-3.5-turbo -S true -T 1.0 -s \"$SYS\""
+CTX_A=`llmq i $PARAMS`
+CTX_B=`llmq i $PARAMS`
+
+cleanup() {
+	llmq d $CTX_A
+	llmq d $CTX_B
+}
+trap cleanup EXIT
+
+ping() {
+	msg=`tee /dev/fd/2`
+	printf "[A] " >&2
+	echo "$msg" | llmq c $CTX_A -s "$1 messages remain"
+	echo
+}
+
+pong() {
+	msg=`tee /dev/fd/2`
+	printf "[B] " >&2
+	echo "$msg" | llmq c $CTX_B -s "$1 messages remain"
+	echo
+}
+
+cmd='printf ""'
+for ((i=$N_MSGS; i > 0; --i))
+do
+	cmd+=" | ping $i | pong $i"
+done
+eval "$cmd"
