@@ -24,30 +24,9 @@ o888o o888o o888o o888o o888o `V8bod888
 ## <a name=synopsis>SYNOPSIS</a>
 
 ```
-usage: llmq [-hv] [ACTION] [CTXPATH | PLUG[://[~][NAMEDCTX]] | -] [OPTS]... [--] [MSGS... | -]
-       llmq [-hv] init     PLUG://[~][NAMEDCTX] [OPTS]... [--] [MSGS]...
-       llmq [-hv] init     CTXPATH              [OPTS]... [--] [MSGS]...
-       llmq [-hv] new      PLUG                 [OPTS]... [--] [MSGS]...
-       llmq [-hv] query    PLUG[://[~]NAMEDCTX] [OPTS]... [--] [MSGS... | -]
-       llmq [-hv] query    -                    [OPTS]... [--] [MSGS]...
-       llmq [-hv] chat     PLUG://[~]NAMEDCTX   [OPTS]... [--] [MSGS... | -]
-       llmq [-hv] chat     CTXPATH              [OPTS]... [--] [MSGS... | -]
-       llmq [-hv] update   PLUG://[~]NAMEDCTX   [OPTS]... [--] [MSGS... | -]
-       llmq [-hv] update   CTXPATH              [OPTS]... [--] [MSGS... | -]
-       llmq [-hv] plugins
-       llmq [-hv] locate   PLUG[://[~][NAMEDCTX]]
-       llmq [-hv] unlocate CTXPATH
-       llmq [-hv] find     PLUG[://[~][NAMEDCTX]]
-       llmq [-hv] find
-       llmq [-hv] auth     PLUG[://[~][NAMEDCTX]]
-       llmq [-hv] edit     PLUG://[~][NAMEDCTX]
-       llmq [-hv] edit     CTXPATH
-       llmq [-hv] del      PLUG://[~][NAMEDCTX]
-       llmq [-hv] del      CTXPATH
-       llmq [-hv] meta     PLUG://[~][NAMEDCTX]
-       llmq [-hv] meta     [CTXPATH | -]
-       llmq [-hv] kill     PLUG[://[~][NAMEDCTX]]
-       llmq [-hv] kill     CTXPATH
+usage: llmq [-hv] [ACTION] CTXPATH                [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] [ACTION] PLUG[://[~][NAMEDCTX]] [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] [ACTION] -                      [OPTS]... [--] [MSGS]...
 ```
 
 The `llmq` executable is a terminal-friendly wrapper for large language models that:
@@ -89,7 +68,9 @@ _note: llmq flags cannot be overridden by plugins and may be used anywhere befor
 
 `i init`: (re-)initializes a context file WITHOUT making a query
 ```
-note: does not attempt to read from stdin
+usage: llmq [-hv] init PLUG://[~][NAMEDCTX] [OPTS]... [--] [MSGS]...
+       llmq [-hv] init CTXPATH              [OPTS]... [--] [MSGS]...
+
 llmq i gpt://  -m gpt-4 "hi!" # prints /tmp/llmq/gpt/<...>.yml
 llmq i gpt://~ -m gpt-4       # same as above; unnamed init always creates new temporary
 llmq i gpt://foo              # prints nothing (note: gpt has no defaults)
@@ -98,12 +79,16 @@ llmq i myctx.yml              # initializes a local YAML file
 
 `n new`: initializes a new a temporary context file
 ```
-note: does not attempt to read from stdin
+usage: llmq [-hv] new PLUG [OPTS]... [--] [MSGS]...
+
 llmq n gpt -m gpt-4 "hi!" # prints /tmp/llmq/gpt/<...>.yml
 ```
 
 `q query`: queries the endpoint and prints reply without modifying context
 ```
+usage: llmq [-hv] query PLUG[://[~]NAMEDCTX] [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] query -                    [OPTS]... [--] [MSGS]...
+
 llmq q gpt://query "hi!"
 llmq q gpt -m gpt-4 -T 1.0 --stream=true --system "sysmsg" "usrmsg"
 
@@ -114,26 +99,32 @@ echo "hi!" | llmq q $ctx --stream 1 # same as above
 
 `c chat`: queries the endpoint, prints reply, and modifies context
 ```
+usage: llmq [-hv] chat     PLUG://[~]NAMEDCTX   [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] chat     CTXPATH              [OPTS]... [--] [MSGS... | -]
+
 llmq chat gpt://chat "hey!"
 echo "listen!" | llmq chat gpt://chat
 ```
 
 `u update`: same as chat, but does not print reply
 ```
+usage: llmq [-hv] update   PLUG://[~]NAMEDCTX   [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] update   CTXPATH              [OPTS]... [--] [MSGS... | -]
+
 llmq update gpt://chat "foo"
 echo "bar" | llmq update gpt://chat
 ```
 
 `p plugins`: lists registered plugins
 ```
-usage: llmq plugins
+usage: llmq [-hv] plugins
 
-llmq -p # gpt : an llmq plugin for the OpenAI Chat Completions endpoint.
+llmq p # gpt : an llmq plugin for the OpenAI Chat Completions endpoint.
 ```
 
 `l locate`: converts `PLUG[://[~][NAMEDCTX]]` to `CTXPATH`
 ```
-usage: llmq locate PLUG[://[~][NAMEDCTX]]
+usage: llmq [-hv] locate PLUG[://[~][NAMEDCTX]]
 
 llmq l gpt           # /home/user/.llmq/gpt/
 llmq l gpt://~       # /tmp/llmq/gpt/
@@ -143,6 +134,8 @@ llmq l gpt://foo/bar # /home/user/.llmq/gpt/foo/bar.yml
 
 `L unlocate`: converts `CTXPATH` to `PLUG://[~][NAMEDCTX]`
 ```
+usage: llmq [-hv] unlocate CTXPATH
+
 llmq L /home/user/.llmq/gpt/ # gpt:// # note: uses qualified name
 cd ~/.llmq/gpt; llmq L .     # gpt://
 llmq L ~/.llmq/gpt/foo.yml   # gpt://foo
@@ -152,6 +145,9 @@ llmq L /tmp/llmq/gpt/bar.yml # gpt://~bar
 
 `f find`: finds context files
 ```
+usage: llmq [-hv] find PLUG[://[~][NAMEDCTX]]
+       llmq [-hv] find
+
 llmq f            # find $LLMQ_STORAGE_DIR $LLMQ_TEMP_DIR -type f -name '*.yml'
 llmq f gpt        # find `llmq l gpt` -type f -name '*.yml'
 llmq f gpt://~foo # find `llmq l gpt://~foo` -type f -name '*.yml'
@@ -159,12 +155,17 @@ llmq f gpt://~foo # find `llmq l gpt://~foo` -type f -name '*.yml'
 
 `a auth`: opens $EDITOR at authfile
 ```
+usage: llmq [-hv] auth PLUG[://[~][NAMEDCTX]]
+
 llmq a gpt        # cd $LLMQ_CONF_DIR; $EDITOR gpt/.auth
 llmq a gpt://~foo # same as above- works as long as plugin can be determined
 ```
 
 `e edit`: opens $EDITOR at ctxfile
 ```
+usage: llmq [-hv] edit PLUG://[~][NAMEDCTX]
+       llmq [-hv] edit CTXPATH
+
 llmq e gpt://query    # cd `llmq l gpt://`  && $EDITOR query.yml
 llmq e gpt://~foo/bar # cd `llmq l gpt://~` && $EDITOR foo/bar.yml
 llmq e ./test.yml     # $EDITOR ./test.yml
@@ -172,16 +173,25 @@ llmq e ./test.yml     # $EDITOR ./test.yml
 
 `d del`: deletes a single context file
 ```
+usage: llmq [-hv] del PLUG://[~][NAMEDCTX]
+       llmq [-hv] del CTXPATH
+
 llmq d gpt://unneeded # rm -f /tmp/llmq/gpt/unneeded.yml
 ```
 
 `m meta`: prints llmq metadata as JSON
 ```
+usage: llmq [-hv] meta PLUG://[~][NAMEDCTX]
+       llmq [-hv] meta [CTXPATH | -]
+
 echo '--- !plugin gpt' | llmq meta # { plugin: "gpt" }
 ```
 
 `k kill`: kills an ongoing operation
 ```
+usage: llmq [-hv] kill PLUG://[~][NAMEDCTX]
+       llmq [-hv] kill CTXPATH
+
 llmq --kill gpt
 llmq k gpt://query
 ```
