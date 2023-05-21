@@ -102,17 +102,17 @@ note: does not attempt to read from stdin
 llmq n gpt -m gpt-4 "hi!" # prints /tmp/llmq/gpt/<...>.yml
 ```
 
-`q query`: queries the endpoint and prints a reply without modifying context
+`q query`: queries the endpoint and prints reply without modifying context
 ```
 llmq q gpt://query "hi!"
 llmq q gpt -m gpt-4 -T 1.0 --stream=true --system "sysmsg" "usrmsg"
 
 ctx=`llmq n gpt --model gpt-4`
 cat `ctx`  | llmq q --stream 1 "hi!"
-echo "hi!" | llmq q $ctx --steam 1 # same as above
+echo "hi!" | llmq q $ctx --stream 1 # same as above
 ```
 
-`c chat`: queries the endpoint, prints a reply, and modifies context
+`c chat`: queries the endpoint, prints reply, and modifies context
 ```
 llmq chat gpt://chat "hey!"
 echo "listen!" | llmq chat gpt://chat
