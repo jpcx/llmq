@@ -23,11 +23,32 @@ o888o o888o o888o o888o o888o `V8bod888
 
 ## <a name=synopsis>SYNOPSIS</a>
 
-### Usage
-
-#### `llmq [-hqiv] [ACTION] [PLUGIN][://[~]CONTEXT] [OPTIONS]... [--] [MSGS]...`
-
-### Description
+```
+usage: llmq [-hv] [ACTION] [CTXPATH | PLUG[://[~][NAMEDCTX]] | -] [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] init     PLUG://[~][NAMEDCTX] [OPTS]... [--] [MSGS]...
+       llmq [-hv] init     CTXPATH              [OPTS]... [--] [MSGS]...
+       llmq [-hv] new      PLUG                 [OPTS]... [--] [MSGS]...
+       llmq [-hv] query    PLUG[://[~]NAMEDCTX] [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] query    -                    [OPTS]... [--] [MSGS]...
+       llmq [-hv] chat     PLUG://[~]NAMEDCTX   [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] chat     CTXPATH              [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] update   PLUG://[~]NAMEDCTX   [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] update   CTXPATH              [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] plugins
+       llmq [-hv] locate   PLUG[://[~][NAMEDCTX]]
+       llmq [-hv] unlocate CTXPATH
+       llmq [-hv] find     PLUG[://[~][NAMEDCTX]]
+       llmq [-hv] find
+       llmq [-hv] auth     PLUG[://[~][NAMEDCTX]]
+       llmq [-hv] edit     PLUG://[~][NAMEDCTX]
+       llmq [-hv] edit     CTXPATH
+       llmq [-hv] del      PLUG://[~][NAMEDCTX]
+       llmq [-hv] del      CTXPATH
+       llmq [-hv] meta     PLUG://[~][NAMEDCTX]
+       llmq [-hv] meta     [CTXPATH | -]
+       llmq [-hv] kill     PLUG[://[~][NAMEDCTX]]
+       llmq [-hv] kill     CTXPATH
+```
 
 The `llmq` executable is a terminal-friendly wrapper for large language models that:
 
@@ -40,139 +61,130 @@ The `llmq` executable is a terminal-friendly wrapper for large language models t
 llmq is built around plugins, which are designed to be easy to create.  
 See the [plugins](#plugins) section for guidelines.
 
+Plugins Included:
+- `gpt`: an llmq plugin for the OpenAI Chat Completions endpoint.
+
 #### Plugin Directories
 
-- `$XDG_CONFIG_HOME/llmq/PLUGIN` (or `~/.config/llmq/PLUGIN`)
-  - stores authfile and any other plugin-specific configuration files
-- `$XDG_DATA_HOME/llmq/PLUGIN` (or `~/.local/share/llmq/PLUGIN`)
-  - stores conversation context as `*.yml` files
-- `/tmp/llmq/PLUGIN`
-  - stores temporary context files (specified by a ~ prefix; see CONTEXT)
+- `$LLMQ_STORAGE_DIR` (or `~/.llmq`)
+  - base directory for persistent context storage
+- `$LLMQ_TEMP_DIR` (or `/tmp/llmq`)
+  - base directory for temporary context storage
+- `$LLMQ_CONFIG_DIR` (or `$XDG_CONFIG_HOME/llmq` or `~/.config/llmq`)
+  - base directory for authentication and other configuration files
 
 Files and directories are automatically created/populated if they do not exist.
 
-### llmq Flags
+#### llmq Flags
 
-**-h, --help**  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;print a help message and exit.
+- `-h --help` prints help documentation and exits
+  - if neither ACTION nor PLUG/CTXPATH are specified, prints llmq help
+  - if ACTION is specified but PLUG/CTXPATH is not, prints ACTION help
+  - if PLUG/CTXPATH is specified, prints plugin help
+- `-v --verbose` prints debugging information to stderr
 
-**-q, --quiet**  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;do not print reply to stdout (chat mode only).
-
-**-i, --no-stdin**  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;does not read from stdin, even if MSGS is missing (query/chat).
-
-**-v, --verbose**  
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;print cURL and other llmq diagnostics to stderr.
-
-note: any flags after PLUGIN are considered plugin OPTIONS
+_note: llmq flags cannot be overridden by plugins and may be used anywhere before '--'._
 
 ### ACTION
 
-q | query
+`i init`: (re-)initializes a context file WITHOUT making a query
 ```
-# makes a request and streams reply to stdout
-llmq query plug://ctx "hello"
-
-# listens for stdin if no MSGS supplied
-echo "hey!" | llmq q plug://ctx
-
-# a query may omit context if the plugin supports it
-echo "listen!" | llmq q plug
+note: does not attempt to read from stdin
+llmq i gpt://  -m gpt-4 "hi!" # prints /tmp/llmq/gpt/<...>.yml
+llmq i gpt://~ -m gpt-4       # same as above; unnamed init always creates new temporary
+llmq i gpt://foo              # prints nothing (note: gpt has no defaults)
+llmq i myctx.yml              # initializes a local YAML file
 ```
 
-c | chat
+`n new`: initializes a new a temporary context file
 ```
-# makes a request, streams reply to stdout, and updates context
-llmq chat plug://ctx "hello"
-
-# listens for stdin if no MSGS supplied
-echo "hi!" | llmq c plug://ctx
-
-# ignores stdin; assumes context was edited externally
-# note: see the demonstration section for an example
-llmq -i c plug://ctx
+note: does not attempt to read from stdin
+llmq n gpt -m gpt-4 "hi!" # prints /tmp/llmq/gpt/<...>.yml
 ```
 
-i | init
+`q query`: queries the endpoint and prints a reply without modifying context
 ```
-# initialize a context file in the data dir
-llmq init plug://ctx -m modelname
+llmq q gpt://query "hi!"
+llmq q gpt -m gpt-4 -T 1.0 --stream=true --system "sysmsg" "usrmsg"
 
-# creates a named temporary context file in the temp dir
-llmq init plug://~foo -m modelname
-
-# creates a temporary, unique context file in the temp dir
-tmpctx=`llmq init plug -m modelname`
-
-# references the temporary context
-# note: tmpctx begins with "plug://~"
-llmq q $tmpctx "hello"
+ctx=`llmq n gpt --model gpt-4`
+cat `ctx`  | llmq q --stream 1 "hi!"
+echo "hi!" | llmq q $ctx --steam 1 # same as above
 ```
 
-e | edit
+`c chat`: queries the endpoint, prints a reply, and modifies context
 ```
-# opens a context file for editing
-llmq edit plug://ctx
-```
-
-a | auth
-```
-# opens the authfile for editing (600 perms by default, warns otherwise)
-llmq auth plug
+llmq chat gpt://chat "hey!"
+echo "listen!" | llmq chat gpt://chat
 ```
 
-p | path
+`u update`: same as chat, but does not print reply
 ```
-# /home/user/.local/share/llmq/plug/ctx.yml
-llmq path plug://ctx
-
-# /tmp/llmq/plug/~ctx.yml
-llmq path plug://~ctx
-
-# /home/user/.local/share/llmq/plug
-llmq path plug
+llmq update gpt://chat "foo"
+echo "bar" | llmq update gpt://chat
 ```
 
-d | del
+`p plugins`: lists registered plugins
 ```
-# deletes a context file
-llmq del plug://ctx
+usage: llmq plugins
 
-# deletes a temporary context file
-llmq del plug://~ctx
+llmq -p # gpt : an llmq plugin for the OpenAI Chat Completions endpoint.
 ```
 
-k | kill
+`l locate`: converts `PLUG[://[~][NAMEDCTX]]` to `CTXPATH`
 ```
-# spawns a background llmq process
-llmq -iq c plug://ctx "please list 10 random things" &
+usage: llmq locate PLUG[://[~][NAMEDCTX]]
 
-# kills the process
-llmq kill plug://ctx
-```
-
-l | list
-```
-# prints a table of registered plugins and descriptions
-llmq list
+llmq l gpt           # /home/user/.llmq/gpt/
+llmq l gpt://~       # /tmp/llmq/gpt/
+llmq l gpt://~foo    # /tmp/llmq/gpt/foo.yml
+llmq l gpt://foo/bar # /home/user/.llmq/gpt/foo/bar.yml
 ```
 
-h | help
+`L unlocate`: converts `CTXPATH` to `PLUG://[~][NAMEDCTX]`
 ```
-# prints the main help message (same as llmq -h)
-llmq help
-
-# prints the help message for plugin `plug`
-llmq help plug
+llmq L /home/user/.llmq/gpt/ # gpt:// # note: uses qualified name
+cd ~/.llmq/gpt; llmq L .     # gpt://
+llmq L ~/.llmq/gpt/foo.yml   # gpt://foo
+llmq L /tmp/llmq/gpt/        # gpt://~
+llmq L /tmp/llmq/gpt/bar.yml # gpt://~bar
 ```
 
-**notes:**
+`f find`: finds context files
+```
+llmq f            # find $LLMQ_STORAGE_DIR $LLMQ_TEMP_DIR -type f -name '*.yml'
+llmq f gpt        # find `llmq l gpt` -type f -name '*.yml'
+llmq f gpt://~foo # find `llmq l gpt://~foo` -type f -name '*.yml'
+```
 
-- ACTION always required, except when using `-h`
-- CONTEXT required for `c|e|d|k`
-- OPTIONS/MSGS/stdin ignored for `e|a|p|d|k|l|h`
-- stdin ignored for `i`
+`a auth`: opens $EDITOR at authfile
+```
+llmq a gpt        # cd $LLMQ_CONF_DIR; $EDITOR gpt/.auth
+llmq a gpt://~foo # same as above- works as long as plugin can be determined
+```
+
+`e edit`: opens $EDITOR at ctxfile
+```
+llmq e gpt://query    # cd `llmq l gpt://`  && $EDITOR query.yml
+llmq e gpt://~foo/bar # cd `llmq l gpt://~` && $EDITOR foo/bar.yml
+llmq e ./test.yml     # $EDITOR ./test.yml
+```
+
+`d del`: deletes a single context file
+```
+llmq d gpt://unneeded # rm -f /tmp/llmq/gpt/unneeded.yml
+```
+
+`m meta`: prints llmq metadata as JSON
+```
+echo '--- !plugin gpt' | llmq meta # { plugin: "gpt" }
+```
+
+`k kill`: kills an ongoing operation
+```
+llmq --kill gpt
+llmq k gpt://query
+```
 
 ### PLUGIN
 
