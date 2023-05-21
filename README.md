@@ -57,9 +57,9 @@ Files and directories are automatically created/populated if they do not exist.
 #### llmq Flags
 
 - `-h --help` prints help documentation and exits
-  - if neither ACTION nor PLUG/CTXPATH are specified, prints llmq help
-  - if ACTION is specified but PLUG/CTXPATH is not, prints ACTION help
-  - if PLUG/CTXPATH is specified, prints plugin help
+  - if neither `ACTION` nor `PLUG`/`CTXPATH` are specified, prints llmq help
+  - if `ACTION` is specified but `PLUG`/`CTXPATH` is not, prints `ACTION` help
+  - if `PLUG`/`CTXPATH` is specified, prints plugin help
 - `-v --verbose` prints debugging information to stderr
 
 _note: llmq flags cannot be overridden by plugins and may be used anywhere before '--'._
@@ -192,8 +192,9 @@ echo '--- !plugin gpt' | llmq meta # { plugin: "gpt" }
 usage: llmq [-hv] kill PLUG://[~][NAMEDCTX]
        llmq [-hv] kill CTXPATH
 
-llmq --kill gpt
-llmq k gpt://query
+llmq k gpt://      # kills all ongoing gpt operations
+llmq k gpt://query # kills operation on named context
+llmq k foo.yml     # kills operation on CTXPATH
 ```
 
 ### PLUGIN
