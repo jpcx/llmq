@@ -72,7 +72,7 @@ usage: llmq [-hv] init PLUG://[~][NAMEDCTX] [OPTS]... [--] [MSGS]...
        llmq [-hv] init CTXPATH              [OPTS]... [--] [MSGS]...
 
 llmq i gpt://  -m gpt-4 "hi!" # prints /tmp/llmq/gpt/<...>.yml
-llmq i gpt://~ -m gpt-4       # same as above; unnamed init always creates new temporary
+llmq i gpt://~ -m gpt-4 "hi!" # same as above; unnamed init always creates new temporary
 llmq i gpt://foo              # prints nothing (note: gpt has no defaults)
 llmq i myctx.yml              # initializes a local YAML file
 ```
