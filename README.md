@@ -99,8 +99,8 @@ echo "hi!" | llmq q $ctx --stream 1 # same as above
 
 `c chat`: queries the endpoint, prints reply, and modifies context
 ```
-usage: llmq [-hv] chat     PLUG://[~]NAMEDCTX   [OPTS]... [--] [MSGS... | -]
-       llmq [-hv] chat     CTXPATH              [OPTS]... [--] [MSGS... | -]
+usage: llmq [-hv] chat PLUG://[~]NAMEDCTX [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] chat CTXPATH            [OPTS]... [--] [MSGS... | -]
 
 llmq chat gpt://chat "hey!"
 echo "listen!" | llmq chat gpt://chat
@@ -108,8 +108,8 @@ echo "listen!" | llmq chat gpt://chat
 
 `u update`: same as chat, but does not print reply
 ```
-usage: llmq [-hv] update   PLUG://[~]NAMEDCTX   [OPTS]... [--] [MSGS... | -]
-       llmq [-hv] update   CTXPATH              [OPTS]... [--] [MSGS... | -]
+usage: llmq [-hv] update PLUG://[~]NAMEDCTX [OPTS]... [--] [MSGS... | -]
+       llmq [-hv] update CTXPATH            [OPTS]... [--] [MSGS... | -]
 
 llmq update gpt://chat "foo"
 echo "bar" | llmq update gpt://chat
